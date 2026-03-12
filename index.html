@@ -2882,8 +2882,8 @@
             // Usuário padrão se não houver salvos
             return {
                 administrador: {
-                    usuario: '1',
-                    senha: '1',
+                    usuario: 'administrador',
+                    senha: '2',
                     role: 'administrador',
                     podeAdicionarUsuarios: true,
                     podeEditarCodigo: true
@@ -3220,9 +3220,50 @@
             }
         }
 
-        // ============================================
-        // EVENT LISTENERS
-        // ============================================
+        function restaurarSessao(sessao) {
+            // Restaurar sessão existente sem revalidar senha
+            USUARIOS = carregarUsuarios();
+            
+            // Verificar se o usuário ainda existe
+            let usuarioEncontrado = null;
+            for (let key in USUARIOS) {
+                if (USUARIOS[key].usuario === sessao.usuario) {
+                    usuarioEncontrado = USUARIOS[key];
+                    break;
+                }
+            }
+            if (!usuarioEncontrado) {
+                localStorage.removeItem('med_system_sessao');
+                return;
+            }
+            
+            document.getElementById('welcomeOverlay').style.display = 'none';
+            document.getElementById('user-info-bar').style.display = 'block';
+            document.getElementById('mainHeader').style.display = 'block';
+            document.getElementById('mainContent').style.display = 'block';
+            document.getElementById('mainFooter').style.display = 'block';
+            document.getElementById('apiStatus').style.display = 'flex';
+            
+            if (sessao.role === 'administrador') {
+                document.getElementById('admin-panel').style.display = 'block';
+            }
+            
+            document.getElementById('loggedUser').textContent = sessao.usuario;
+            document.getElementById('loggedRole').textContent = sessao.role === 'administrador' ? 'Administrador' : 'Usuário Comum';
+            document.getElementById('loggedTime').textContent = new Date().toLocaleString('pt-BR');
+            
+            const nav = navigator.userAgent;
+            if (nav.indexOf('Chrome') > -1) document.getElementById('loggedBrowser').textContent = 'Chrome';
+            else if (nav.indexOf('Firefox') > -1) document.getElementById('loggedBrowser').textContent = 'Firefox';
+            else if (nav.indexOf('Safari') > -1) document.getElementById('loggedBrowser').textContent = 'Safari';
+            else if (nav.indexOf('Edge') > -1) document.getElementById('loggedBrowser').textContent = 'Edge';
+            else document.getElementById('loggedBrowser').textContent = 'Outro';
+            
+            document.getElementById('dashboardDoctorName').textContent = 'Dr. ' + sessao.usuario;
+            carregarDadosDoUsuario(sessao.usuario);
+        }
+
+
         document.getElementById('loginBtn').addEventListener('click', function() {
             const usuario = document.getElementById('loginUsuario').value;
             const senha = document.getElementById('loginSenha').value;
@@ -3264,12 +3305,11 @@
             
             if (verificarLogin()) {
                 const sessao = JSON.parse(localStorage.getItem('med_system_sessao'));
-                fazerLogin(sessao.usuario, sessao.usuario);
+                restaurarSessao(sessao);
             }
             
-            if (typeof inicializarSistema === 'function') {
-                inicializarSistema();
-            }
+            // Inicializar sistema apenas uma vez (removido DOMContentLoaded duplicado)
+            inicializarSistema();
         };
 
         // ============================================
@@ -5485,11 +5525,58 @@ Justificativa: [texto com evidências integrando clínica e imagem]
 
         function salvarPaciente() {
             const nomeInput = document.getElementById('nome');
-            nomeInput.value = capitalizarNomeCompleto(nomeInput.value);
+            nomeInput.value = capitalizarNomeCompleto(nomeInput.value.trim());
             
-            // VALIDAÇÃO: Verificar se o nome não está vazio
-            if (!nomeInput.value || nomeInput.value.trim() === '') {
-                alert('O nome do paciente é obrigatório!');
+            const cpfInput = document.getElementById('cpf');
+            const dataNascimentoInput = document.getElementById('data-nascimento');
+            const sexoInput = document.getElementById('sexo');
+            const erros = [];
+            
+            // Validação: Nome obrigatório (mínimo 2 palavras)
+            const nomeParts = nomeInput.value.trim().split(/\s+/);
+            if (!nomeInput.value || nomeParts.length < 2) {
+                erros.push('• Nome completo é obrigatório (mínimo nome e sobrenome).');
+                nomeInput.style.borderColor = 'var(--danger-color)';
+            } else {
+                nomeInput.style.borderColor = '';
+            }
+            
+            // Validação: CPF — formato básico (11 dígitos numéricos)
+            const cpfLimpo = cpfInput.value.replace(/\D/g, '');
+            if (cpfLimpo && cpfLimpo.length !== 11) {
+                erros.push('• CPF inválido (deve conter 11 dígitos numéricos).');
+                cpfInput.style.borderColor = 'var(--danger-color)';
+            } else {
+                cpfInput.style.borderColor = '';
+                // Verificar duplicata de CPF apenas em modo criação
+                const editingId = document.getElementById('editing-patient-id').value;
+                if (cpfLimpo && !editingId) {
+                    const cpfDuplicado = pacientes.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
+                    if (cpfDuplicado) {
+                        erros.push(`• CPF já cadastrado para o paciente: ${cpfDuplicado.nome}.`);
+                        cpfInput.style.borderColor = 'var(--danger-color)';
+                    }
+                }
+            }
+            
+            // Validação: Data de nascimento — não pode ser futura nem mais de 130 anos
+            if (dataNascimentoInput.value) {
+                const nascimento = new Date(dataNascimentoInput.value);
+                const hoje = new Date();
+                const idadeMax = new Date(hoje.getFullYear() - 130, hoje.getMonth(), hoje.getDate());
+                if (nascimento > hoje) {
+                    erros.push('• Data de nascimento não pode ser uma data futura.');
+                    dataNascimentoInput.style.borderColor = 'var(--danger-color)';
+                } else if (nascimento < idadeMax) {
+                    erros.push('• Data de nascimento inválida (idade superior a 130 anos).');
+                    dataNascimentoInput.style.borderColor = 'var(--danger-color)';
+                } else {
+                    dataNascimentoInput.style.borderColor = '';
+                }
+            }
+            
+            if (erros.length > 0) {
+                alert('Corrija os seguintes erros antes de salvar:\n\n' + erros.join('\n'));
                 return;
             }
             
@@ -5532,10 +5619,17 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 };
                 pacientes.push(paciente);
                 
-                // FIFO - Manter apenas os 10 pacientes mais recentes
-                if (pacientes.length > 10) {
-                    pacientes = pacientes.slice(-10);
-                }
+                // Verificar uso de memória do localStorage (aviso ao atingir ~80% de 5 MB)
+                try {
+                    const dadosTotais = JSON.stringify(pacientes).length + JSON.stringify(consultas).length;
+                    if (dadosTotais > 4 * 1024 * 1024) { // ~4 MB
+                        const confirmExcluir = confirm(
+                            '⚠️ AVISO: A memória de armazenamento está quase cheia!\n\n' +
+                            'Para liberar espaço, recomendamos excluir pacientes ou consultas mais antigas.\n\n' +
+                            'Acesse a lista de pacientes e exclua os registros desnecessários.'
+                        );
+                    }
+                } catch(e) { /* Ignorar erro de cálculo */ }
             }
             
             // Salvar no localStorage do usuário atual
@@ -5576,15 +5670,65 @@ Justificativa: [texto com evidências integrando clínica e imagem]
             const pacienteNome = document.getElementById('consult-patient-name').textContent;
             const paciente = pacientes.find(p => p.nome === pacienteNome);
             if (!paciente) {
-                alert('Paciente não encontrado!');
+                alert('⚠️ Nenhum paciente selecionado!\nBusque e selecione um paciente antes de salvar a consulta.');
                 return;
             }
-            const diagnosticoFinal = document.getElementById('diagnostico-final').value;
-            const tratamento = document.getElementById('tratamento').value;
-            if (!diagnosticoFinal || !tratamento) {
-                alert('Por favor, preencha o diagnóstico final e o tratamento antes de salvar.');
+            
+            const queixaPrincipalInput = document.getElementById('queixa-principal');
+            const diagnosticoFinalInput = document.getElementById('diagnostico-final');
+            const tratamentoInput = document.getElementById('tratamento');
+            const erros = [];
+            
+            // Validação: Queixa principal obrigatória
+            if (!queixaPrincipalInput.value || queixaPrincipalInput.value.trim().length < 5) {
+                erros.push('• Queixa principal é obrigatória (mínimo 5 caracteres).');
+                queixaPrincipalInput.style.borderColor = 'var(--danger-color)';
+            } else {
+                queixaPrincipalInput.style.borderColor = '';
+            }
+            
+            // Validação: Diagnóstico final obrigatório
+            if (!diagnosticoFinalInput.value || diagnosticoFinalInput.value.trim() === '') {
+                erros.push('• Diagnóstico final é obrigatório.');
+                diagnosticoFinalInput.style.borderColor = 'var(--danger-color)';
+            } else {
+                diagnosticoFinalInput.style.borderColor = '';
+            }
+            
+            // Validação: Tratamento obrigatório
+            if (!tratamentoInput.value || tratamentoInput.value.trim() === '') {
+                erros.push('• Plano de tratamento é obrigatório.');
+                tratamentoInput.style.borderColor = 'var(--danger-color)';
+            } else {
+                tratamentoInput.style.borderColor = '';
+            }
+            
+            // Validação: Sinais vitais — se preenchidos, verificar faixas razoáveis
+            const fc = document.getElementById('frequencia-cardiaca').value;
+            const fcNum = parseInt(fc);
+            if (fc && (isNaN(fcNum) || fcNum < 20 || fcNum > 300)) {
+                erros.push('• Frequência cardíaca inválida (valores esperados: 20–300 bpm).');
+            }
+            
+            const temp = document.getElementById('temperatura').value;
+            const tempNum = parseFloat(temp);
+            if (temp && (isNaN(tempNum) || tempNum < 30 || tempNum > 45)) {
+                erros.push('• Temperatura inválida (valores esperados: 30–45 °C).');
+            }
+            
+            const sat = document.getElementById('saturacao-oxigenio').value;
+            const satNum = parseInt(sat);
+            if (sat && (isNaN(satNum) || satNum < 50 || satNum > 100)) {
+                erros.push('• Saturação de oxigênio inválida (valores esperados: 50–100%).');
+            }
+            
+            if (erros.length > 0) {
+                alert('Corrija os seguintes erros antes de salvar:\n\n' + erros.join('\n'));
                 return;
             }
+            
+            const diagnosticoFinal = diagnosticoFinalInput.value;
+            const tratamento = tratamentoInput.value;
             
             const agora = new Date();
             const dataFormatada = agora.toISOString().slice(0, 16).replace('T', ' ');
@@ -5653,10 +5797,18 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 
                 consultas.push(novaConsulta);
                 
-                // FIFO - Manter apenas as 10 consultas mais recentes
-                if (consultas.length > 10) {
-                    consultas = consultas.slice(-10);
-                }
+                // Verificar uso de memória do localStorage (aviso ao atingir ~4 MB)
+                try {
+                    const dadosTotais = JSON.stringify(pacientes).length + JSON.stringify(consultas).length;
+                    if (dadosTotais > 4 * 1024 * 1024) {
+                        alert(
+                            '⚠️ AVISO: A memória de armazenamento está quase cheia!\n\n' +
+                            'Algumas consultas antigas podem não ser salvas corretamente.\n' +
+                            'Recomendamos excluir registros mais antigos para liberar espaço.\n\n' +
+                            'Acesse o Histórico e exclua consultas antigas.'
+                        );
+                    }
+                } catch(e) { /* Ignorar erro de cálculo */ }
                 
                 alert('Consulta salva com sucesso!');
             }
@@ -5806,12 +5958,11 @@ Justificativa: [texto com evidências integrando clínica e imagem]
         window.mostrarProximaAba = mostrarProximaAba;
         window.mostrarAbaAnterior = mostrarAbaAnterior;
         window.mostrarTab = mostrarTab;
-        window.limparDadosPacientes = limparDadosPacientes; // Expor função para console se necessário
-        window.editarConsulta = editarConsulta; // Expor função de editar consulta
-        window.excluirConsulta = excluirConsulta; // Expor função de excluir consulta
+        window.limparDadosPacientes = limparDadosPacientes;
+        window.editarConsulta = editarConsulta;
+        window.excluirConsulta = excluirConsulta;
 
-        // Inicializar
-        document.addEventListener('DOMContentLoaded', inicializarSistema);
+        // Inicialização feita em window.onload (evita dupla inicialização)
     </script>
 </body>
 </html>
