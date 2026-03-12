@@ -2865,39 +2865,70 @@
 
     <script>
         // ============================================
-        // BANCO DE DADOS DE USUÁRIOS (PROBLEMA 1 - AGORA PERSISTENTE)
+        // BANCO DE DADOS DE USUÁRIOS - FIREBASE REALTIME DATABASE
+        // Os usuários ficam salvos na nuvem e são acessíveis de qualquer computador.
+        // Os dados de pacientes continuam salvos localmente por usuário.
         // ============================================
-        
-        // Função para carregar usuários do localStorage
-        function carregarUsuarios() {
-            const usuariosSalvos = localStorage.getItem('med_system_usuarios');
-            if (usuariosSalvos) {
-                try {
-                    return JSON.parse(usuariosSalvos);
-                } catch (e) {
-                    console.error('Erro ao carregar usuários:', e);
-                }
+
+        // ⚠️ CONFIGURE AQUI O SEU PROJETO FIREBASE:
+        // 1. Acesse https://console.firebase.google.com/
+        // 2. Crie um projeto → Realtime Database → Criar banco de dados
+        // 3. Nas Regras, coloque: { "rules": { ".read": true, ".write": true } }
+        // 4. Copie a URL do banco (ex: https://SEU-PROJETO-default-rtdb.firebaseio.com)
+        // 5. Substitua o valor abaixo pela sua URL:
+        const FIREBASE_RTDB_URL = 'https://centrodiagnosticomedico-ccac4-default-rtdb.firebaseio.com/med_system_usuarios.json';
+
+        const USUARIOS_PADRAO = {
+            administrador: {
+                usuario: 'administrador',
+                senha: '2',
+                role: 'administrador',
+                podeAdicionarUsuarios: true,
+                podeEditarCodigo: true
             }
-            
-            // Usuário padrão se não houver salvos
-            return {
-                administrador: {
-                    usuario: 'administrador',
-                    senha: '2',
-                    role: 'administrador',
-                    podeAdicionarUsuarios: true,
-                    podeEditarCodigo: true
+        };
+
+        // Carrega usuários do Firebase (nuvem)
+        async function carregarUsuarios() {
+            try {
+                const response = await fetch(FIREBASE_RTDB_URL);
+                if (!response.ok) throw new Error('Falha na requisição Firebase');
+                const data = await response.json();
+                if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+                    return data;
                 }
-            };
+                // Primeira vez: salvar usuário padrão na nuvem
+                await salvarUsuarios(USUARIOS_PADRAO);
+                return USUARIOS_PADRAO;
+            } catch (e) {
+                console.warn('Firebase indisponível, usando localStorage como fallback:', e);
+                const local = localStorage.getItem('med_system_usuarios');
+                if (local) {
+                    try { return JSON.parse(local); } catch(err) {}
+                }
+                return { ...USUARIOS_PADRAO };
+            }
         }
 
-        // Função para salvar usuários no localStorage
-        function salvarUsuarios(usuarios) {
-            localStorage.setItem('med_system_usuarios', JSON.stringify(usuarios));
+        // Salva usuários no Firebase (nuvem)
+        async function salvarUsuarios(usuarios) {
+            try {
+                const response = await fetch(FIREBASE_RTDB_URL, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(usuarios)
+                });
+                if (!response.ok) throw new Error('Falha ao salvar no Firebase');
+                // Backup local
+                localStorage.setItem('med_system_usuarios', JSON.stringify(usuarios));
+            } catch (e) {
+                console.warn('Firebase indisponível, salvando apenas localmente:', e);
+                localStorage.setItem('med_system_usuarios', JSON.stringify(usuarios));
+            }
         }
 
-        // Carregar usuários do localStorage
-        let USUARIOS = carregarUsuarios();
+        // Usuários carregados na memória (preenchido de forma assíncrona)
+        let USUARIOS = {};
 
         // ============================================
         // FUNÇÕES DE LOGIN
@@ -2908,9 +2939,9 @@
             return !!(sessao.usuario && sessao.token);
         }
 
-        function fazerLogin(usuario, senha) {
-            // Recarregar usuários do localStorage para garantir dados atualizados
-            USUARIOS = carregarUsuarios();
+        async function fazerLogin(usuario, senha) {
+            // Recarregar usuários do Firebase para garantir dados atualizados
+            USUARIOS = await carregarUsuarios();
             
             for (let key in USUARIOS) {
                 if (USUARIOS[key].usuario === usuario && USUARIOS[key].senha === senha) {
@@ -3086,9 +3117,9 @@
             }
         }
 
-        function atualizarListaUsuarios() {
-            // Recarregar usuários do localStorage
-            USUARIOS = carregarUsuarios();
+        async function atualizarListaUsuarios() {
+            // Recarregar usuários do Firebase
+            USUARIOS = await carregarUsuarios();
             
             const tbody = document.getElementById('users-list-body');
             tbody.innerHTML = '';
@@ -3113,7 +3144,7 @@
             }
         }
 
-        function adicionarUsuario() {
+        async function adicionarUsuario() {
             const usuario = document.getElementById('newUsername').value.trim();
             const senha = document.getElementById('newPassword').value;
             const role = document.getElementById('newRole').value;
@@ -3142,8 +3173,8 @@
                 podeEditarCodigo: podeEditar
             };
 
-            // Salvar no localStorage
-            salvarUsuarios(USUARIOS);
+            // Salvar no Firebase
+            await salvarUsuarios(USUARIOS);
 
             document.getElementById('newUsername').value = '';
             document.getElementById('newPassword').value = '';
@@ -3159,12 +3190,12 @@
             }
         }
 
-        function excluirUsuario(key) {
+        async function excluirUsuario(key) {
             if (confirm('Tem certeza que deseja excluir este usuário?')) {
                 const usuarioExcluido = USUARIOS[key]?.usuario;
                 delete USUARIOS[key];
-                // Salvar no localStorage após exclusão
-                salvarUsuarios(USUARIOS);
+                // Salvar no Firebase após exclusão
+                await salvarUsuarios(USUARIOS);
                 
                 // Opcional: Remover dados do usuário excluído
                 if (usuarioExcluido) {
@@ -3220,9 +3251,9 @@
             }
         }
 
-        function restaurarSessao(sessao) {
+        async function restaurarSessao(sessao) {
             // Restaurar sessão existente sem revalidar senha
-            USUARIOS = carregarUsuarios();
+            USUARIOS = await carregarUsuarios();
             
             // Verificar se o usuário ainda existe
             let usuarioEncontrado = null;
@@ -3264,7 +3295,7 @@
         }
 
 
-        document.getElementById('loginBtn').addEventListener('click', function() {
+        document.getElementById('loginBtn').addEventListener('click', async function() {
             const usuario = document.getElementById('loginUsuario').value;
             const senha = document.getElementById('loginSenha').value;
             
@@ -3272,8 +3303,19 @@
                 document.getElementById('login-error-message').style.display = 'flex';
                 return;
             }
+
+            // Mostrar estado de carregando
+            const btn = document.getElementById('loginBtn');
+            const textoOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
+            btn.disabled = true;
             
-            if (fazerLogin(usuario, senha)) {
+            const logado = await fazerLogin(usuario, senha);
+            
+            btn.innerHTML = textoOriginal;
+            btn.disabled = false;
+            
+            if (logado) {
                 document.getElementById('login-error-message').style.display = 'none';
             } else {
                 document.getElementById('login-error-message').style.display = 'flex';
@@ -3297,15 +3339,18 @@
         // ============================================
         // INICIALIZAÇÃO
         // ============================================
-        window.onload = function() {
+        window.onload = async function() {
             const codigoSalvo = localStorage.getItem('med_codigo_salvo');
             if (codigoSalvo && confirm('Código salvo encontrado. Deseja restaurar?')) {
                 alert('Para restaurar, cole o código no editor e salve.');
             }
+
+            // Pré-carregar usuários da nuvem ao iniciar
+            USUARIOS = await carregarUsuarios();
             
             if (verificarLogin()) {
                 const sessao = JSON.parse(localStorage.getItem('med_system_sessao'));
-                restaurarSessao(sessao);
+                await restaurarSessao(sessao);
             }
             
             // Inicializar sistema apenas uma vez (removido DOMContentLoaded duplicado)
@@ -4333,11 +4378,7 @@
         function calcularIdadeDetalhada(dataNascimento) {
             if (!dataNascimento) return 'Não informada';
             const hoje = new Date();
-            // Corrige bug de fuso horário: parseia partes da data localmente
-            const partes = dataNascimento.split('T')[0].split('-');
-            const nascimento = partes.length === 3
-                ? new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]))
-                : new Date(dataNascimento);
+            const nascimento = new Date(dataNascimento);
             let anos = hoje.getFullYear() - nascimento.getFullYear();
             let meses = hoje.getMonth() - nascimento.getMonth();
             if (meses < 0) {
@@ -5401,7 +5442,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 row.innerHTML = `
                     <td>${formatarDataHora(consulta.data)}</td>
                     <td>${paciente ? paciente.nome : 'Paciente não encontrado'}</td>
-                    <td>${(consulta.queixaPrincipal || '').substring(0, 50)}${(consulta.queixaPrincipal || '').length > 50 ? '...' : ''}</td>
+                    <td>${consulta.queixaPrincipal.substring(0, 50)}${consulta.queixaPrincipal.length > 50 ? '...' : ''}</td>
                     <td>${consulta.diagnostico}</td>
                     <td>
                         <div class="action-buttons">
@@ -5457,7 +5498,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 row.innerHTML = `
                     <td>${formatarDataHora(consulta.data)}</td>
                     <td>${paciente ? paciente.nome : 'Paciente não encontrado'}</td>
-                    <td>${(consulta.queixaPrincipal || '').substring(0, 50)}${(consulta.queixaPrincipal || '').length > 50 ? '...' : ''}</td>
+                    <td>${consulta.queixaPrincipal.substring(0, 50)}${consulta.queixaPrincipal.length > 50 ? '...' : ''}</td>
                     <td>${consulta.diagnostico}</td>
                     <td>${consulta.medico}</td>
                     <td>
@@ -5552,13 +5593,10 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 cpfInput.style.borderColor = 'var(--danger-color)';
             } else {
                 cpfInput.style.borderColor = '';
-                // Verificar duplicata de CPF (em criação e em edição, excluindo o próprio paciente)
+                // Verificar duplicata de CPF apenas em modo criação
                 const editingId = document.getElementById('editing-patient-id').value;
-                if (cpfLimpo) {
-                    const cpfDuplicado = pacientes.find(p => 
-                        p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo && 
-                        (!editingId || p.id !== parseInt(editingId))
-                    );
+                if (cpfLimpo && !editingId) {
+                    const cpfDuplicado = pacientes.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
                     if (cpfDuplicado) {
                         erros.push(`• CPF já cadastrado para o paciente: ${cpfDuplicado.nome}.`);
                         cpfInput.style.borderColor = 'var(--danger-color)';
@@ -5568,10 +5606,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
             
             // Validação: Data de nascimento — não pode ser futura nem mais de 130 anos
             if (dataNascimentoInput.value) {
-                const partes = dataNascimentoInput.value.split('-');
-                const nascimento = partes.length === 3
-                    ? new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]))
-                    : new Date(dataNascimentoInput.value);
+                const nascimento = new Date(dataNascimentoInput.value);
                 const hoje = new Date();
                 const idadeMax = new Date(hoje.getFullYear() - 130, hoje.getMonth(), hoje.getDate());
                 if (nascimento > hoje) {
@@ -5633,7 +5668,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 try {
                     const dadosTotais = JSON.stringify(pacientes).length + JSON.stringify(consultas).length;
                     if (dadosTotais > 4 * 1024 * 1024) { // ~4 MB
-                        alert(
+                        const confirmExcluir = confirm(
                             '⚠️ AVISO: A memória de armazenamento está quase cheia!\n\n' +
                             'Para liberar espaço, recomendamos excluir pacientes ou consultas mais antigas.\n\n' +
                             'Acesse a lista de pacientes e exclua os registros desnecessários.'
@@ -5941,11 +5976,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
         function calcularIdade(dataNascimento) {
             if (!dataNascimento) return 0;
             const hoje = new Date();
-            // Corrige bug de fuso horário: parseia partes da data localmente
-            const partes = dataNascimento.split('T')[0].split('-');
-            const nascimento = partes.length === 3
-                ? new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]))
-                : new Date(dataNascimento);
+            const nascimento = new Date(dataNascimento);
             let idade = hoje.getFullYear() - nascimento.getFullYear();
             const mes = hoje.getMonth() - nascimento.getMonth();
             if (mes < 0 || (mes === 0 && hoje.getDate() < nascimento.getDate())) {
@@ -5956,13 +5987,6 @@ Justificativa: [texto com evidências integrando clínica e imagem]
 
         function formatarData(data) {
             if (!data) return '';
-            // Corrige bug de fuso horário: "YYYY-MM-DD" interpretado como UTC meia-noite
-            // resultava em dia anterior ao converter para horário local (Brazil UTC-3)
-            const partes = data.split('T')[0].split('-');
-            if (partes.length === 3) {
-                const d = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
-                return d.toLocaleDateString('pt-BR');
-            }
             const d = new Date(data);
             return d.toLocaleDateString('pt-BR');
         }
