@@ -4333,7 +4333,11 @@
         function calcularIdadeDetalhada(dataNascimento) {
             if (!dataNascimento) return 'Não informada';
             const hoje = new Date();
-            const nascimento = new Date(dataNascimento);
+            // Corrige bug de fuso horário: parseia partes da data localmente
+            const partes = dataNascimento.split('T')[0].split('-');
+            const nascimento = partes.length === 3
+                ? new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]))
+                : new Date(dataNascimento);
             let anos = hoje.getFullYear() - nascimento.getFullYear();
             let meses = hoje.getMonth() - nascimento.getMonth();
             if (meses < 0) {
@@ -5397,7 +5401,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 row.innerHTML = `
                     <td>${formatarDataHora(consulta.data)}</td>
                     <td>${paciente ? paciente.nome : 'Paciente não encontrado'}</td>
-                    <td>${consulta.queixaPrincipal.substring(0, 50)}${consulta.queixaPrincipal.length > 50 ? '...' : ''}</td>
+                    <td>${(consulta.queixaPrincipal || '').substring(0, 50)}${(consulta.queixaPrincipal || '').length > 50 ? '...' : ''}</td>
                     <td>${consulta.diagnostico}</td>
                     <td>
                         <div class="action-buttons">
@@ -5453,7 +5457,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 row.innerHTML = `
                     <td>${formatarDataHora(consulta.data)}</td>
                     <td>${paciente ? paciente.nome : 'Paciente não encontrado'}</td>
-                    <td>${consulta.queixaPrincipal.substring(0, 50)}${consulta.queixaPrincipal.length > 50 ? '...' : ''}</td>
+                    <td>${(consulta.queixaPrincipal || '').substring(0, 50)}${(consulta.queixaPrincipal || '').length > 50 ? '...' : ''}</td>
                     <td>${consulta.diagnostico}</td>
                     <td>${consulta.medico}</td>
                     <td>
@@ -5548,10 +5552,13 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 cpfInput.style.borderColor = 'var(--danger-color)';
             } else {
                 cpfInput.style.borderColor = '';
-                // Verificar duplicata de CPF apenas em modo criação
+                // Verificar duplicata de CPF (em criação e em edição, excluindo o próprio paciente)
                 const editingId = document.getElementById('editing-patient-id').value;
-                if (cpfLimpo && !editingId) {
-                    const cpfDuplicado = pacientes.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
+                if (cpfLimpo) {
+                    const cpfDuplicado = pacientes.find(p => 
+                        p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo && 
+                        (!editingId || p.id !== parseInt(editingId))
+                    );
                     if (cpfDuplicado) {
                         erros.push(`• CPF já cadastrado para o paciente: ${cpfDuplicado.nome}.`);
                         cpfInput.style.borderColor = 'var(--danger-color)';
@@ -5561,7 +5568,10 @@ Justificativa: [texto com evidências integrando clínica e imagem]
             
             // Validação: Data de nascimento — não pode ser futura nem mais de 130 anos
             if (dataNascimentoInput.value) {
-                const nascimento = new Date(dataNascimentoInput.value);
+                const partes = dataNascimentoInput.value.split('-');
+                const nascimento = partes.length === 3
+                    ? new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]))
+                    : new Date(dataNascimentoInput.value);
                 const hoje = new Date();
                 const idadeMax = new Date(hoje.getFullYear() - 130, hoje.getMonth(), hoje.getDate());
                 if (nascimento > hoje) {
@@ -5623,7 +5633,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 try {
                     const dadosTotais = JSON.stringify(pacientes).length + JSON.stringify(consultas).length;
                     if (dadosTotais > 4 * 1024 * 1024) { // ~4 MB
-                        const confirmExcluir = confirm(
+                        alert(
                             '⚠️ AVISO: A memória de armazenamento está quase cheia!\n\n' +
                             'Para liberar espaço, recomendamos excluir pacientes ou consultas mais antigas.\n\n' +
                             'Acesse a lista de pacientes e exclua os registros desnecessários.'
