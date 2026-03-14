@@ -4168,9 +4168,6 @@
                             <button class="action-btn view" onclick="visualizarPerfilPaciente(${paciente.id})">
                                 <i class="fas fa-user-md"></i> Perfil
                             </button>
-                            <button class="action-btn edit" onclick="editarPaciente(${paciente.id})">
-                                <i class="fas fa-edit"></i> Editar
-                            </button>
                             <button class="action-btn delete" onclick="excluirPaciente(${paciente.id})">
                                 <i class="fas fa-trash"></i> Excluir
                             </button>
@@ -5299,6 +5296,9 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                             <button class="btn btn-accent" onclick="criarConsultaDoPerfil(${paciente.id})" style="padding: 12px 25px; font-size: 1.1rem;">
                                 <i class="fas fa-plus-circle"></i> Nova Consulta
                             </button>
+                            <button class="btn btn-warning" onclick="editarPaciente(${paciente.id})" style="padding: 12px 25px; font-size: 1.1rem;">
+                                <i class="fas fa-edit"></i> Editar Perfil
+                            </button>
                         </div>
                         
                         <div class="stat-grid">
@@ -5545,10 +5545,6 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 carregarPacientes();
             }
             if (pageId === 'consultas') {
-                document.getElementById('consult-form-container').style.display = 'none';
-                document.getElementById('consultas-search-section').style.display = 'block';
-                document.getElementById('patient-search-results').style.display = 'none';
-                resetarFormularioConsulta();
                 carregarConsultasRecentes();
             }
             if (pageId === 'historico') {
@@ -5615,9 +5611,6 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                         <div class="action-buttons">
                             <button class="action-btn view" onclick="visualizarPerfilPaciente(${paciente.id})">
                                 <i class="fas fa-user-md"></i> Perfil
-                            </button>
-                            <button class="action-btn edit" onclick="editarPaciente(${paciente.id})">
-                                <i class="fas fa-edit"></i> Editar
                             </button>
                             <button class="action-btn delete" onclick="excluirPaciente(${paciente.id})">
                                 <i class="fas fa-trash"></i> Excluir
@@ -5754,9 +5747,6 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                         <div class="action-buttons">
                             <button class="action-btn view" onclick="visualizarPerfilPaciente(${paciente.id})">
                                 <i class="fas fa-user-md"></i> Perfil
-                            </button>
-                            <button class="action-btn edit" onclick="editarPaciente(${paciente.id})">
-                                <i class="fas fa-edit"></i> Editar
                             </button>
                             <button class="action-btn delete" onclick="excluirPaciente(${paciente.id})">
                                 <i class="fas fa-trash"></i> Excluir
