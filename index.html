@@ -6068,6 +6068,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
 
         window.editarPaciente = function(pacienteId) {
             const paciente = pacientes.find(p => p.id === pacienteId);
+            mostrarPagina('pacientes');
             document.getElementById('editing-patient-id').value = paciente.id;
             document.getElementById('nome').value = paciente.nome;
             document.getElementById('cpf').value = paciente.cpf;
