@@ -3778,6 +3778,94 @@
             pw.onload = function() { pw.print(); };
         }
 
+        function imprimirDetalheConsulta(consultaId) {
+            const consulta = consultas.find(c => c.id === parseInt(consultaId));
+            if (!consulta) return;
+            const paciente = pacientes.find(p => p.id === consulta.pacienteId);
+            const pacienteNome = paciente ? paciente.nome : 'Não informado';
+
+            // Usar a data da consulta (não a data atual)
+            const dataConsulta = consulta.data
+                ? consulta.data.split(' ')[0]  // pega só YYYY-MM-DD se tiver hora
+                : '';
+            let dataFormatada = dataConsulta;
+            const partes = dataConsulta.split('-');
+            if (partes.length === 3) dataFormatada = partes[2] + '/' + partes[1] + '/' + partes[0];
+
+            const tratamentoTexto = consulta.tratamento || '';
+
+            const secaoMatch = tratamentoTexto.match(/===\s*TRATAMENTO\s*===[\s\S]*?(?:===|$)/i);
+            const linhasMeds = tratamentoTexto
+                ? tratamentoTexto.split('\n').filter(l => l.trim().match(/^\d+[.)]/)).map(l => l)
+                : [];
+
+            const blocosHtml = linhasMeds.map(function(linha) {
+                const texto = linha.replace(/^\d+[.)]\s*/, '').trim();
+                const partes2 = texto.split(/\s+-\s+/);
+                const nomeDose = partes2[0] || texto;
+                const posologia = partes2.slice(1).join(' - ') || '';
+                let quantidade = '';
+                const mDias = posologia.match(/por\s+(\d+)\s+dias?/i);
+                const mH1   = posologia.match(/de\s+(\d+)\/(\d+)\s*h/i);
+                const mH2   = posologia.match(/a cada\s+(\d+)\s*horas?/i);
+                const mVez  = posologia.match(/(\d+)\s*(?:vez|vezes)\s*ao\s*dia/i);
+                const mQtd  = posologia.match(/^(\d+)\s+/);
+                if (mDias) {
+                    const dias = parseInt(mDias[1]);
+                    let tomadas = 1;
+                    if (mH1)  tomadas = Math.round(24 / parseInt(mH1[1]));
+                    else if (mH2)  tomadas = Math.round(24 / parseInt(mH2[1]));
+                    else if (mVez) tomadas = parseInt(mVez[1]);
+                    const qtd = mQtd ? parseInt(mQtd[1]) : 1;
+                    const total = dias * tomadas * qtd;
+                    if (total > 0) quantidade = 'Dispensar: ' + total + ' unidade' + (total > 1 ? 's' : '');
+                }
+                const viaMatch = posologia.match(/\b(via oral|VO|IM|IV|subcutâneo|SC|tópico|inalatório|inalatorio|sublingual|retal|nasal)\b/i);
+                const via = viaMatch ? viaMatch[1] : '';
+                return '<div style="margin-bottom:24px; padding-bottom:18px; border-bottom:1px dashed #ccc;">'
+                    + (via ? '<p style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">' + via + '</p>' : '')
+                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:#1a1a2e;">' + nomeDose + '</p>'
+                    + (posologia ? '<p style="font-size:14px; color:#333; margin-bottom:4px;">' + posologia + '</p>' : '')
+                    + (quantidade ? '<p style="font-size:13px; color:#555; font-style:italic;">' + quantidade + '</p>' : '')
+                    + '</div>';
+            }).join('');
+
+            const medicoNome = consulta.medico || currentDoctorName;
+
+            const pw = window.open('', '_blank', 'width=800,height=900');
+            pw.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receita Médica</title>'
+                + '<style>body{margin:0;padding:40px;font-family:Segoe UI,sans-serif;color:#1a1a1a;}hr{border:none;}p{margin:0 0 4px;}@media print{@page{margin:1.5cm;}}</style>'
+                + '</head><body>'
+                + '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">'
+                    + '<div>'
+                        + '<p style="font-size:10px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px;">Centro de Diagnóstico Médico</p>'
+                        + '<h1 style="font-size:20px; color:#2c5aa0; margin:0;">RECEITA MÉDICA</h1>'
+                    + '</div>'
+                    + '<div style="text-align:right; font-size:12px; color:#444;">'
+                        + '<p style="margin:0;"><strong>' + medicoNome + '</strong></p>'
+                    + '</div>'
+                + '</div>'
+                + '<hr style="border:none; border-top:2px solid #2c5aa0; margin-bottom:18px;">'
+                + '<div style="display:flex; justify-content:space-between; margin-bottom:24px; font-size:14px;">'
+                    + '<p style="margin:0;"><strong>Paciente:</strong> ' + pacienteNome + '</p>'
+                    + '<p style="margin:0;"><strong>Data:</strong> ' + dataFormatada + '</p>'
+                + '</div>'
+                + '<div style="min-height:280px;">'
+                    + (blocosHtml || '<p style="font-size:14px; color:#555;">' + tratamentoTexto.replace(/\n/g,'<br>') + '</p>')
+                + '</div>'
+                + '<div style="margin-top:50px; text-align:right;">'
+                    + '<div style="display:inline-block; text-align:center; min-width:240px;">'
+                        + '<hr style="border:none; border-top:1px solid #333; margin-bottom:8px;">'
+                        + '<p style="font-size:15px; font-weight:700; margin:0;">' + medicoNome + '</p>'
+                        + '<p style="font-size:12px; color:#666; margin:0;">' + dataFormatada + '</p>'
+                    + '</div>'
+                + '</div>'
+                + '</body></html>');
+            pw.document.close();
+            pw.focus();
+            pw.onload = function() { pw.print(); };
+        }
+
         // ============================================
         // FUNÇÕES DE UPLOAD E ANÁLISE DE IMAGENS COM GOOGLE GEMINI (PROBLEMA 2)
         // ============================================
@@ -4351,7 +4439,7 @@
                     </div>
                     ` : ''}
                     <div style="text-align: center; margin-top: 40px;">
-                        <button class="btn btn-print" onclick="window.print()" style="background: var(--primary-color); color: white; padding: 12px 30px;">
+                        <button class="btn btn-print" onclick="imprimirDetalheConsulta('${consulta.id}')" style="background: var(--primary-color); color: white; padding: 12px 30px;">
                             <i class="fas fa-print"></i> Imprimir
                         </button>
                     </div>
