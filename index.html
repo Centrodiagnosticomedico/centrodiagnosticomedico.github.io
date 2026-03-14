@@ -2487,6 +2487,18 @@
                     </div>
                 </div>
                 
+                <!-- ALERTA DE ALERGIA - TOPO DA CONSULTA -->
+                <div id="allergy-alert-top" style="display:none; background:#fff0f0; border:2.5px solid #e74c3c; border-radius:8px; padding:18px 22px; margin-bottom:20px; animation: fadeIn 0.4s ease;">
+                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+                        <i class="fas fa-exclamation-triangle" style="color:#e74c3c; font-size:2rem;"></i>
+                        <strong style="color:#e74c3c; font-size:1.15rem;">⚠️ ATENÇÃO: CONFLITO DE ALERGIA — MEDICAMENTO SUBSTITUÍDO AUTOMATICAMENTE</strong>
+                    </div>
+                    <div id="allergy-alert-top-body" style="color:#7b2d2d; font-size:1rem; line-height:1.8;"></div>
+                    <p style="margin-top:12px; color:#666; font-size:0.9rem; border-top:1px solid #f5c6c6; padding-top:10px;">
+                        <i class="fas fa-info-circle"></i> O tratamento foi gerado com alternativa segura para este paciente. Verifique a substituição antes de finalizar.
+                    </p>
+                </div>
+
                 <div class="tabs">
                     <div class="tab active" data-tab="anamnese">Anamnese</div>
                     <div class="tab" data-tab="exame-fisico">Exame Físico</div>
@@ -4551,6 +4563,12 @@ Baseado no diagnóstico fornecido e no perfil do paciente, gere recomendações 
 Considere comorbidades, medicações atuais, alergias e peso do paciente para calcular dosagens adequadas.
 Forneça recomendações práticas e baseadas em diretrizes médicas (OMS, Ministério da Saúde, etc) de forma organizada e profissional.
 
+⚠️ REGRA CRÍTICA DE SEGURANÇA — ALERGIAS:
+- NUNCA prescreva qualquer medicamento ao qual o paciente tem alergia registrada, mesmo que seja o tratamento de primeira linha.
+- Se o medicamento de primeira escolha causar alergia no paciente, substitua OBRIGATORIAMENTE por uma alternativa segura da mesma classe terapêutica ou equivalente.
+- Ao fazer substituição por alergia, indique explicitamente no texto: "(SUBSTITUÍDO — paciente alérgico ao [medicamento original])".
+- Esta regra é absoluta e não admite exceções.
+
 FORMATO DA RESPOSTA (OBRIGATÓRIO):
 
 === TRATAMENTO ===
@@ -4725,7 +4743,102 @@ Assinatura do Médico`;
                 prescricaoTextarea.value = tratamento;
             }
             treatmentSection.style.display = 'block';
+            verificarAlergiasTratamento(tratamento);
             treatmentSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function verificarAlergiasTratamento(tratamento) {
+            // Coletar texto de alergias de todas as fontes disponíveis
+            const pacienteNome = document.getElementById('consult-patient-name').textContent;
+            const paciente = pacientes.find(p => p.nome === pacienteNome);
+
+            const fontes = [];
+            if (paciente && paciente.historicoMedico) fontes.push(paciente.historicoMedico);
+            const hdaEl = document.getElementById('historia-doenca');
+            if (hdaEl && hdaEl.value) fontes.push(hdaEl.value);
+            const antEl = document.getElementById('antecedentes');
+            if (antEl && antEl.value) fontes.push(antEl.value);
+
+            const textoCompleto = fontes.join(' ');
+            const textoLower = textoCompleto.toLowerCase();
+
+            const alertDiv = document.getElementById('allergy-alert-top');
+            const alertBody = document.getElementById('allergy-alert-top-body');
+
+            // Verificar se há menção de alergias
+            if (!textoLower.includes('alergi') && !textoLower.includes('alérgic') && !textoLower.includes('intolerânci')) {
+                alertDiv.style.display = 'none';
+                return;
+            }
+
+            // Extrair nomes dos alérgenos a partir das frases que contêm palavras-chave de alergia
+            const alergenios = new Set();
+            const frases = textoCompleto.split(/[.\n;!?]/);
+
+            frases.forEach(function(frase) {
+                const fraseLower = frase.toLowerCase();
+                if (fraseLower.includes('alergi') || fraseLower.includes('alérgic') || fraseLower.includes('intolerânci')) {
+                    const regexPrincipal = /(?:alergi[ao][s]?\s+(?:a|ao|à|às|de|ao uso de)?\s*|alérgic[oa]s?\s+(?:a|ao|à|às)?\s*|intolerânci[ao]\s+(?:a|ao|à|ao)?\s*)([^.;\n!?]+)/gi;
+                    let match;
+                    while ((match = regexPrincipal.exec(frase)) !== null) {
+                        match[1].replace(/[()[\]{}]/g, '').split(/[,\/\+\s]+/).forEach(function(word) {
+                            const w = word.trim().toLowerCase().replace(/[^a-záàâãéèêíìîóòôõúùûçñ]/g, '');
+                            if (w.length > 3) alergenios.add(w);
+                        });
+                    }
+                    const regexColon = /(?:alergi[ao]s?|intolerânci[ao]s?)\s*[:\-]\s*([^.;\n!?]+)/gi;
+                    let matchC;
+                    while ((matchC = regexColon.exec(frase)) !== null) {
+                        matchC[1].replace(/[()[\]{}]/g, '').split(/[,\/\+\s]+/).forEach(function(word) {
+                            const w = word.trim().toLowerCase().replace(/[^a-záàâãéèêíìîóòôõúùûçñ]/g, '');
+                            if (w.length > 3) alergenios.add(w);
+                        });
+                    }
+                }
+            });
+
+            if (alergenios.size === 0) {
+                alertDiv.style.display = 'none';
+                return;
+            }
+
+            // Verificar se algum alérgeno aparece no texto do tratamento gerado
+            const tratamentoLower = tratamento.toLowerCase();
+            const conflitos = [];
+
+            alergenios.forEach(function(alerg) {
+                if (tratamentoLower.includes(alerg)) {
+                    conflitos.push(alerg);
+                }
+            });
+
+            // Verificar também se a IA já fez substituição (marcador no texto)
+            const substituicaoFeita = tratamento.toLowerCase().includes('substituído') || tratamento.toLowerCase().includes('alérgico ao');
+
+            if (conflitos.length > 0 || substituicaoFeita) {
+                const listAlerg = [...alergenios].join(', ');
+                let htmlConflitos = '';
+                if (conflitos.length > 0) {
+                    htmlConflitos = '<div style="margin-bottom:10px;"><strong>Medicamento(s) conflitante(s) identificado(s):</strong><br>' +
+                        [...new Set(conflitos)].map(function(c) {
+                            return '<span style="background:#e74c3c; color:white; border-radius:4px; padding:2px 8px; margin:2px; display:inline-block;">🚫 ' + c + '</span>';
+                        }).join(' ') + '</div>';
+                }
+                const htmlSubst = substituicaoFeita
+                    ? '<div style="margin-bottom:6px; color:#1a7a3c;"><strong>✅ A IA já substituiu o medicamento por uma alternativa segura.</strong> Verifique o tratamento abaixo.</div>'
+                    : '';
+                alertBody.innerHTML =
+                    htmlSubst + htmlConflitos +
+                    '<div><strong>Alergias registradas do paciente:</strong> <em style="color:#7b2d2d;">' + listAlerg + '</em></div>';
+                alertDiv.style.display = 'block';
+                // Rolar para o topo do formulário de consulta
+                const formContainer = document.getElementById('consult-form-container');
+                if (formContainer) {
+                    formContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            } else {
+                alertDiv.style.display = 'none';
+            }
         }
 
         // ============================================
@@ -5315,6 +5428,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
             document.getElementById('diagnosis-placeholder').style.display = 'block';
             document.getElementById('diagnostic-alerts').innerHTML = '';
             document.getElementById('treatment-section').style.display = 'none';
+            document.getElementById('allergy-alert-top').style.display = 'none';
             document.getElementById('prescricao-preview').style.display = 'block';
             document.getElementById('prescricao').style.display = 'none';
             document.getElementById('prescricao-preview').textContent = 'A prescrição aparecerá aqui quando o tratamento for gerado';
