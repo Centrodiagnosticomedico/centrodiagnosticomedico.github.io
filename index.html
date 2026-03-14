@@ -1010,13 +1010,17 @@
                 visibility: hidden;
             }
             
+            #print-prescription-container {
+                display: block !important;
+            }
+
             .prescription-print-content, 
             .prescription-print-content * {
                 visibility: visible;
             }
             
             .prescription-print-content {
-                position: absolute;
+                position: fixed;
                 left: 0;
                 top: 0;
                 width: 100%;
@@ -1304,6 +1308,36 @@
             padding: 25px;
             box-shadow: var(--box-shadow);
             transition: var(--transition);
+            color: var(--dark-color);
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--gray-color);
+        }
+
+        .info-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--gray-color);
+            margin-bottom: 6px;
+        }
+
+        .info-value {
+            font-size: 1rem;
+            color: var(--dark-color);
+        }
+
+        .timeline-date {
+            font-size: 0.85rem;
+            color: var(--gray-color);
+            margin-bottom: 4px;
+        }
+
+        .timeline-title {
+            font-weight: 600;
+            color: var(--dark-color);
+            margin-bottom: 6px;
         }
 
         .stat-card-modern:hover {
@@ -2760,13 +2794,18 @@
                                     <div class="spinner"></div>
                                     <p>Gerando plano de tratamento personalizado...</p>
                                 </div>
-                                <div id="treatment-content" class="treatment-content"></div>
+                                <div id="treatment-content" class="treatment-content" contenteditable="true"
+                                     style="min-height:120px; outline:none; border:1px solid #ddd; border-radius:6px; padding:12px 15px; background:#fff; cursor:text;"
+                                     title="Clique para editar o plano de tratamento"></div>
+                                <small style="color:var(--gray-color); margin-top:6px; display:block;"><i class="fas fa-edit"></i> Campo editável — clique para ajustar o tratamento gerado.</small>
+                                <div id="treatment-signature" style="margin-top:20px; padding-top:16px; border-top:1px solid #ddd; font-family:'Courier New',monospace; font-size:0.97rem; color:#333; line-height:1.9;">
+                                    <div style="margin-bottom:8px;">____________________________________</div>
+                                    <div><strong id="sig-nome"></strong></div>
+                                    <div id="sig-crm" style="color:var(--gray-color);"></div>
+                                    <div id="sig-data" style="color:var(--gray-color);"></div>
+                                </div>
                             </div>
-                            
-                            <div class="form-group">
-                                <label for="tratamento">Plano de Tratamento *</label>
-                                <textarea id="tratamento" name="tratamento" required placeholder="O tratamento será gerado automaticamente quando você selecionar um diagnóstico..."></textarea>
-                            </div>
+                            <textarea id="tratamento" name="tratamento" required style="display:none;"></textarea>
                             
                             <div class="form-group">
                                 <label for="prescricao">Prescrição Médica</label>
@@ -3650,66 +3689,93 @@
         function imprimirPrescricao() {
             const tratamentoTexto = document.getElementById('tratamento').value;
             const pacienteNome = document.getElementById('consult-patient-name').textContent;
-            const paciente = pacientes.find(p => p.nome === pacienteNome);
             if (!tratamentoTexto || tratamentoTexto.trim() === '') {
                 alert('Não há plano de tratamento para imprimir.');
                 return;
             }
+
             const dataAtual = new Date();
             const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
-            const horaFormatada = dataAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-            const dataHoraConsulta = `${dataFormatada} às ${horaFormatada}`;
-            const idadeDetalhada = paciente ? calcularIdadeDetalhada(paciente.dataNascimento) : 'Não informada';
-            const idadeSimples = paciente ? `${calcularIdade(paciente.dataNascimento)} anos` : 'Não informada';
+
+            // Extrair linhas de medicamentos da seção === TRATAMENTO ===
+            const secaoMatch = tratamentoTexto.match(/===\s*TRATAMENTO\s*===([\s\S]*?)(?:===|$)/i);
+            const linhasMeds = secaoMatch
+                ? secaoMatch[1].trim().split('\n').filter(l => l.trim().match(/^\d+[.)]/) )
+                : tratamentoTexto.split('\n').filter(l => l.trim().match(/^\d+[.)]/) );
+
+            const blocosHtml = linhasMeds.map(function(linha) {
+                const texto = linha.replace(/^\d+[.)]\s*/, '').trim();
+                const partes = texto.split(/\s+-\s+/);
+                const nomeDose = partes[0] || texto;
+                const posologia = partes.slice(1).join(' - ') || '';
+
+                let quantidade = '';
+                const matchDias = posologia.match(/por\s+(\d+)\s+dias?/i);
+                const matchH1  = posologia.match(/de\s+(\d+)\/(\d+)\s*h/i);
+                const matchH2  = posologia.match(/a cada\s+(\d+)\s*horas?/i);
+                const matchVez = posologia.match(/(\d+)\s*(?:vez|vezes)\s*ao\s*dia/i);
+                const matchQtd = posologia.match(/^(\d+)\s+/);
+                if (matchDias) {
+                    const dias = parseInt(matchDias[1]);
+                    let tomadas = 1;
+                    if (matchH1)  tomadas = Math.round(24 / parseInt(matchH1[1]));
+                    else if (matchH2)  tomadas = Math.round(24 / parseInt(matchH2[1]));
+                    else if (matchVez) tomadas = parseInt(matchVez[1]);
+                    const qtdPorTomada = matchQtd ? parseInt(matchQtd[1]) : 1;
+                    const total = dias * tomadas * qtdPorTomada;
+                    if (total > 0) quantidade = 'Dispensar: ' + total + ' unidade' + (total > 1 ? 's' : '');
+                }
+
+                const viaMatch = posologia.match(/\b(via oral|VO|IM|IV|subcutâneo|SC|tópico|inalatório|inalatorio|sublingual|retal|nasal)\b/i);
+                const via = viaMatch ? viaMatch[1] : '';
+
+                return '<div style="margin-bottom:24px; padding-bottom:18px; border-bottom:1px dashed #ccc;">'
+                    + (via ? '<p style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">' + via + '</p>' : '')
+                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:#1a1a2e;">' + nomeDose + '</p>'
+                    + (posologia ? '<p style="font-size:14px; color:#333; margin-bottom:4px;">' + posologia + '</p>' : '')
+                    + (quantidade ? '<p style="font-size:13px; color:#555; font-style:italic;">' + quantidade + '</p>' : '')
+                    + '</div>';
+            }).join('');
+
             const printContent = document.createElement('div');
             printContent.className = 'prescription-print-content';
-            printContent.innerHTML = `
-                <div class="prescription-logo">
-                    <i class="fas fa-stethoscope"></i>
-                    <h1>Centro de Diagnóstico Médico</h1>
-                </div>
-                <div class="prescription-header">
-                    <h2>PRESCRIÇÃO MÉDICA</h2>
-                </div>
-                <div class="prescription-info-box">
-                    <h3 style="color: var(--primary-color); margin-bottom: 20px; font-size: 22px;">Dados da Consulta</h3>
-                    <p style="font-size: 18px; margin-bottom: 15px;">
-                        <strong>Paciente:</strong> ${pacienteNome}
-                    </p>
-                    <p style="font-size: 18px; margin-bottom: 15px;">
-                        <strong>Idade:</strong> ${idadeDetalhada} (${idadeSimples})
-                    </p>
-                    <p style="font-size: 18px; margin-bottom: 15px;">
-                        <strong>Data e Hora da Consulta:</strong> ${dataHoraConsulta}
-                    </p>
-                    <p style="font-size: 18px; margin-bottom: 15px;">
-                        <strong>Médico Responsável:</strong> Dr. ${currentDoctorName} - CRM 12345
-                    </p>
-                </div>
-                <div class="prescription-treatment-box">
-                    <h3>PLANO DE TRATAMENTO</h3>
-                    <div class="prescription-treatment-content">
-                        ${tratamentoTexto.replace(/\n/g, '<br>')}
-                    </div>
-                </div>
-                <div class="prescription-signature">
-                    <p style="font-size: 18px;">____________________________________</p>
-                    <p style="font-size: 20px; font-weight: bold; margin-top: 10px;">Dr. ${currentDoctorName}</p>
-                    <p style="font-size: 16px; color: #666;">CRM: 12345</p>
-                </div>
-                <div class="prescription-footer">
-                    <p>Documento gerado por Sistema de Diagnóstico Médico com IA</p>
-                    <p style="margin-top: 10px;">Emitido em: ${dataHoraConsulta}</p>
-                    <p style="margin-top: 5px;">Válido em todo território nacional</p>
-                </div>
-            `;
-            const printContainer = document.getElementById('print-prescription-container');
-            printContainer.innerHTML = '';
-            printContainer.appendChild(printContent);
-            window.print();
-            setTimeout(() => {
-                printContainer.innerHTML = '';
-            }, 100);
+            printContent.innerHTML =
+                '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">'
+                    + '<div>'
+                        + '<p style="font-size:10px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px;">Centro de Diagnóstico Médico</p>'
+                        + '<h1 style="font-size:20px; color:#2c5aa0; margin:0;">RECEITA MÉDICA</h1>'
+                    + '</div>'
+                    + '<div style="text-align:right; font-size:12px; color:#444;">'
+                        + '<p style="margin:0;"><strong>' + currentDoctorName + '</strong></p>'
+                        
+                    + '</div>'
+                + '</div>'
+                + '<hr style="border:none; border-top:2px solid #2c5aa0; margin-bottom:18px;">'
+                + '<div style="display:flex; justify-content:space-between; margin-bottom:24px; font-size:14px;">'
+                    + '<p style="margin:0;"><strong>Paciente:</strong> ' + pacienteNome + '</p>'
+                    + '<p style="margin:0;"><strong>Data:</strong> ' + dataFormatada + '</p>'
+                + '</div>'
+                + '<div style="min-height:280px;">'
+                    + (blocosHtml || '<p style="font-size:14px; color:#555;">' + tratamentoTexto.replace(/\n/g,'<br>') + '</p>')
+                + '</div>'
+                + '<div style="margin-top:50px; text-align:right;">'
+                    + '<div style="display:inline-block; text-align:center; min-width:240px;">'
+                        + '<hr style="border:none; border-top:1px solid #333; margin-bottom:8px;">'
+                        + '<p style="font-size:15px; font-weight:700; margin:0;">' + currentDoctorName + '</p>'
+                        
+                        + '<p style="font-size:12px; color:#666; margin:0;">' + dataFormatada + '</p>'
+                    + '</div>'
+                + '</div>';
+
+            const pw = window.open('', '_blank', 'width=800,height=900');
+            pw.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receita Médica</title>'
+                + '<style>body{margin:0;padding:40px;font-family:Segoe UI,sans-serif;color:#1a1a1a;}hr{border:none;}p{margin:0 0 4px;}@media print{@page{margin:1.5cm;}}</style>'
+                + '</head><body>'
+                + printContent.innerHTML
+                + '</body></html>');
+            pw.document.close();
+            pw.focus();
+            pw.onload = function() { pw.print(); };
         }
 
         // ============================================
@@ -4643,7 +4709,7 @@ Use linguagem clara e profissional.`;
 - Retornar em 72h se não houver melhora
 
 === PRESCRIÇÃO ===
-Dr. ${currentDoctorName} - CRM 12345
+Dr. ${currentDoctorName}
 
 Paciente: ${document.getElementById('consult-patient-name').textContent}
 
@@ -4674,7 +4740,7 @@ Assinatura do Médico`;
 - Retorno em 72h para reavaliação
 
 === PRESCRIÇÃO ===
-Dr. ${currentDoctorName} - CRM 12345
+Dr. ${currentDoctorName}
 
 Paciente: ${document.getElementById('consult-patient-name').textContent}
 
@@ -4705,7 +4771,7 @@ Assinatura do Médico`;
 - Retornar se febre persistir >72h
 
 === PRESCRIÇÃO ===
-Dr. ${currentDoctorName} - CRM 12345
+Dr. ${currentDoctorName}
 
 Paciente: ${document.getElementById('consult-patient-name').textContent}
 
@@ -4731,19 +4797,40 @@ Assinatura do Médico`;
             const tratamentoTextarea = document.getElementById('tratamento');
             const prescricaoPreview = document.getElementById('prescricao-preview');
             const prescricaoTextarea = document.getElementById('prescricao');
-            treatmentContent.innerHTML = tratamento.replace(/\n/g, '<br>');
-            tratamentoTextarea.value = tratamento;
-            const prescricaoMatch = tratamento.match(/=== PRESCRIÇÃO ===\s*([\s\S]*?)(?:\n\n|$)/);
+
+            // Auto-preencher assinatura com dados do médico logado e data/hora atual
+            const agora = new Date();
+            const dataHora = agora.toLocaleDateString('pt-BR') + ' às ' + agora.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+            document.getElementById('sig-nome').textContent = currentDoctorName;
+            document.getElementById('sig-data').textContent = 'Data: ' + dataHora;
+
+            // Remover bloco de assinatura inline que a IA possa ter gerado no texto
+            const textoLimpo = tratamento
+                .replace(/_{3,}[\s\S]{0,200}?Assinatura[\s\S]*?$/i, '')
+                .replace(/\[Nome do Médico\][^\n]*/gi, '')
+                .replace(/\[CRM\/UF\][^\n]*/gi, '')
+                .replace(/\[Data\][^\n]*/gi, '')
+                .trim();
+
+            treatmentContent.innerHTML = textoLimpo.replace(/\n/g, '<br>');
+            tratamentoTextarea.value = textoLimpo;
+
+            // Sincronizar edições do contenteditable com o textarea oculto
+            treatmentContent.oninput = function() {
+                tratamentoTextarea.value = treatmentContent.innerText;
+            };
+
+            const prescricaoMatch = textoLimpo.match(/=== PRESCRIÇÃO ===\s*([\s\S]*?)(?:\n\n|$)/);
             if (prescricaoMatch) {
                 const prescricao = prescricaoMatch[1].trim();
                 prescricaoPreview.textContent = prescricao;
                 prescricaoTextarea.value = prescricao;
             } else {
-                prescricaoPreview.textContent = tratamento;
-                prescricaoTextarea.value = tratamento;
+                prescricaoPreview.textContent = textoLimpo;
+                prescricaoTextarea.value = textoLimpo;
             }
             treatmentSection.style.display = 'block';
-            verificarAlergiasTratamento(tratamento);
+            verificarAlergiasTratamento(textoLimpo);
             treatmentSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
@@ -5429,6 +5516,10 @@ Justificativa: [texto com evidências integrando clínica e imagem]
             document.getElementById('diagnostic-alerts').innerHTML = '';
             document.getElementById('treatment-section').style.display = 'none';
             document.getElementById('allergy-alert-top').style.display = 'none';
+            document.getElementById('treatment-content').innerHTML = '';
+            document.getElementById('sig-nome').textContent = '';
+            document.getElementById('sig-crm').textContent = '';
+            document.getElementById('sig-data').textContent = '';
             document.getElementById('prescricao-preview').style.display = 'block';
             document.getElementById('prescricao').style.display = 'none';
             document.getElementById('prescricao-preview').textContent = 'A prescrição aparecerá aqui quando o tratamento for gerado';
