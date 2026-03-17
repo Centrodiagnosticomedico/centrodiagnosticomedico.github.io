@@ -2553,16 +2553,39 @@
                         </div>
                         
                         <div class="form-group">
-                            <label for="historia-doenca">História da Doença Atual (HDA)</label>
+                            <label for="historia-doenca">Conversa com o Paciente</label>
                             <div class="input-group">
-                                <textarea id="historia-doenca" name="historia-doenca" placeholder="Descreva o início, evolução e características dos sintomas..."></textarea>
-                                <button type="button" id="microphone-btn" class="btn-mic" title="Clique para ditar usando o microfone">
-                                    <i class="fas fa-microphone"></i>
-                                </button>
+                                <textarea id="historia-doenca" name="historia-doenca" placeholder="Transcrição da conversa com o paciente durante a consulta..."></textarea>
+                                <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
+                                    <button type="button" id="microphone-btn" class="btn-mic" title="Iniciar transcrição da consulta via Speechmatics">
+                                        <i class="fas fa-microphone"></i>
+                                    </button>
+                                    <button type="button" id="stop-transcription-btn" class="btn-mic" title="Parar gravação e transcrever" style="display:none;background-color:#e74c3c;">
+                                        <i class="fas fa-stop"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <small style="color: var(--gray-color);">Clique no microfone para ditar a conversa com o paciente. Funciona imediatamente!</small>
+                            <div id="transcription-status" style="margin-top:8px;font-size:0.9rem;color:var(--gray-color);display:none;">
+                                <i class="fas fa-spinner fa-spin"></i> <span id="transcription-status-text">Aguardando...</span>
+                            </div>
+                            <small style="color: var(--gray-color);">Clique no microfone para gravar a consulta. Ao parar, o áudio é transcrito com separação Médico/Paciente via Speechmatics. Use o botão ✨ para gerar a HDA automaticamente.</small>
                         </div>
                         
+                        <div class="form-group">
+                            <label for="historia-doenca-hda" style="display:flex;align-items:center;gap:10px;">
+                                História da Doença Atual (HDA)
+                                <button type="button" id="btn-gerar-hda" class="btn btn-accent" style="padding:5px 14px;font-size:0.85rem;" title="Gerar HDA a partir da conversa com o paciente usando IA">
+                                    <i class="fas fa-magic"></i> Gerar com IA
+                                </button>
+                                <span id="hda-loading" style="display:none;font-size:0.85rem;color:var(--gray-color);">
+                                    <i class="fas fa-spinner fa-spin"></i> Gerando...
+                                </span>
+                            </label>
+                            <textarea id="historia-doenca-hda" name="historia-doenca-hda" rows="6"
+                                placeholder="Clique em 'Gerar com IA' para criar automaticamente a HDA a partir da conversa, ou escreva manualmente..."></textarea>
+                            <small style="color:var(--gray-color);">A IA extrai e organiza tecnicamente apenas o relato do paciente da conversa transcrita.</small>
+                        </div>
+
                         <div class="form-group">
                             <label for="antecedentes">Antecedentes Pessoais e Familiares</label>
                             <textarea id="antecedentes" name="antecedentes" placeholder="Histórico médico pessoal e familiar relevante..."></textarea>
@@ -3422,7 +3445,7 @@
         // CONFIGURAÇÃO DA API DO GOOGLE GEMINI
         // ============================================
         const GOOGLE_AI_CONFIG = {
-            API_KEY: 'AIzaSyDtC5bqmcnvFF8dMLuA0VmYg9UYj_r7QGk',
+            API_KEY: 'AIzaSyDpLx42pWdrplfLJJbHtKbesdAnQzZIgKE',
             ENDPOINT: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
         };
 
@@ -3435,90 +3458,337 @@
         let selectedExams = [];
 
         // ============================================
-        // FUNÇÕES DE MICROFONE
+        // FUNÇÕES DE MICROFONE - SPEECHMATICS
         // ============================================
-        function iniciarReconhecimentoVoz() {
-            const historiaDoenca = document.getElementById('historia-doenca');
+        const SPEECHMATICS_API_KEY = 'ciGUytbWpBXoEcJY35WJQmDIX6kwUXIO';
+        let mediaRecorder = null;
+        let audioChunks = [];
+
+        function setTranscriptionStatus(visible, text) {
+            const statusEl = document.getElementById('transcription-status');
+            const statusText = document.getElementById('transcription-status-text');
+            if (statusEl) statusEl.style.display = visible ? 'block' : 'none';
+            if (statusText && text) statusText.textContent = text;
+        }
+
+        async function iniciarReconhecimentoVoz() {
             const micBtn = document.getElementById('microphone-btn');
-            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                alert('Seu navegador não suporta reconhecimento de voz. Use Chrome, Edge ou Safari.');
-                return;
-            }
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'pt-BR';
-            recognition.maxAlternatives = 1;
-            recognition.onstart = function() {
+            const stopBtn = document.getElementById('stop-transcription-btn');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioChunks = [];
+                // Prefer webm/opus for best browser support; fallback to default
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : MediaRecorder.isTypeSupported('audio/webm')
+                        ? 'audio/webm'
+                        : '';
+                mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    stream.getTracks().forEach(t => t.stop());
+                    micBtn.classList.remove('recording');
+                    micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+                    micBtn.title = 'Iniciar transcrição da consulta via Speechmatics';
+                    micBtn.style.display = 'flex';
+                    stopBtn.style.display = 'none';
+                    isRecording = false;
+                    updateAPIStatus('Processando áudio...', 'connected');
+                    setTranscriptionStatus(true, 'Enviando áudio para transcrição...');
+                    await transcreverComSpeechmatics();
+                };
+
+                mediaRecorder.start(1000);
                 isRecording = true;
                 micBtn.classList.add('recording');
                 micBtn.innerHTML = '<i class="fas fa-microphone-slash"></i>';
-                micBtn.title = 'Clique para parar a gravação';
-                finalTranscript = '';
-                updateAPIStatus('Gravando... Fale com o paciente', 'connected');
-            };
-            recognition.onend = function() {
-                isRecording = false;
-                micBtn.classList.remove('recording');
-                micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
-                micBtn.title = 'Clique para ditar usando o microfone';
-                updateAPIStatus('Reconhecimento de voz pronto', 'connected');
-                if (finalTranscript.trim()) {
-                    let textoFormatado = finalTranscript.trim();
-                    textoFormatado = textoFormatado.charAt(0).toUpperCase() + textoFormatado.slice(1);
-                    if (!textoFormatado.endsWith('.') && !textoFormatado.endsWith('!') && !textoFormatado.endsWith('?')) {
-                        textoFormatado += '.';
-                    }
-                    if (historiaDoenca.value) {
-                        historiaDoenca.value += '\n\n--- RELATO DO PACIENTE ---\n' + textoFormatado;
-                    } else {
-                        historiaDoenca.value = textoFormatado;
-                    }
-                    historiaDoenca.scrollTop = historiaDoenca.scrollHeight;
-                }
-            };
-            recognition.onresult = function(event) {
-                let interimTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const transcript = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
-                        finalTranscript += transcript + ' ';
-                    } else {
-                        interimTranscript += transcript;
-                    }
-                }
-                console.log('Parcial:', interimTranscript);
-            };
-            recognition.onerror = function(event) {
-                console.error('Erro no reconhecimento:', event.error);
-                if (event.error === 'not-allowed') {
+                micBtn.title = 'Gravando... clique em STOP para parar';
+                stopBtn.style.display = 'flex';
+                micBtn.style.display = 'flex';
+                updateAPIStatus('🔴 Gravando consulta...', 'connected');
+                setTranscriptionStatus(true, '🔴 Gravando... clique no botão STOP quando terminar.');
+            } catch (err) {
+                console.error('Erro ao acessar microfone:', err);
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                     alert('Permissão para usar o microfone negada. Autorize o acesso nas configurações do navegador.');
-                } else if (event.error === 'network') {
-                    alert('Erro de rede. Verifique sua conexão com a internet.');
-                } else if (event.error === 'no-speech') {
-                    alert('Nenhuma fala detectada. Tente novamente.');
                 } else {
-                    alert(`Erro: ${event.error}. Tente novamente.`);
+                    alert('Não foi possível acessar o microfone: ' + err.message);
                 }
-                isRecording = false;
-                micBtn.classList.remove('recording');
-                micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
-                micBtn.title = 'Clique para ditar usando o microfone';
-                updateAPIStatus('Reconhecimento de voz pronto', 'connected');
-            };
-            try {
-                recognition.start();
-            } catch (error) {
-                console.error('Erro ao iniciar:', error);
-                alert('Não foi possível iniciar a gravação. Tente novamente.');
+                setTranscriptionStatus(false);
             }
         }
 
         function pararReconhecimentoVoz() {
-            if (recognition && isRecording) {
-                recognition.stop();
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
             }
+        }
+
+        // Converte Blob de áudio para WAV PCM 16kHz mono (aceito universalmente pelo Speechmatics)
+        async function converterParaWav(audioBlob) {
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+            await audioCtx.close();
+            const numSamples = decoded.length;
+            const numChannels = decoded.numberOfChannels;
+            const pcm = new Float32Array(numSamples);
+            for (let ch = 0; ch < numChannels; ch++) {
+                const channelData = decoded.getChannelData(ch);
+                for (let i = 0; i < numSamples; i++) pcm[i] += channelData[i] / numChannels;
+            }
+            const int16 = new Int16Array(numSamples);
+            for (let i = 0; i < numSamples; i++) {
+                const s = Math.max(-1, Math.min(1, pcm[i]));
+                int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            const sampleRate = 16000;
+            const dataSize = int16.byteLength;
+            const buf = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buf);
+            const write = (off, val, len) => { for (let i = 0; i < len; i++) view.setUint8(off + i, (val >> (8 * i)) & 0xff); };
+            const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+            writeStr(0, 'RIFF'); write(4, 36 + dataSize, 4); writeStr(8, 'WAVE');
+            writeStr(12, 'fmt '); write(16, 16, 4); write(20, 1, 2); write(22, 1, 2);
+            write(24, sampleRate, 4); write(28, sampleRate * 2, 4); write(32, 2, 2); write(34, 16, 2);
+            writeStr(36, 'data'); write(40, dataSize, 4);
+            new Int16Array(buf, 44).set(int16);
+            return new Blob([buf], { type: 'audio/wav' });
+        }
+
+        async function transcreverComSpeechmatics() {
+            const historiaDoenca = document.getElementById('historia-doenca');
+            try {
+                // Montar o blob bruto e converter para WAV PCM 16kHz mono
+                const mimeType = audioChunks[0]?.type || 'audio/webm';
+                const rawBlob = new Blob(audioChunks, { type: mimeType });
+
+                setTranscriptionStatus(true, 'Convertendo áudio para WAV...');
+                let audioBlob;
+                try {
+                    audioBlob = await converterParaWav(rawBlob);
+                } catch (convErr) {
+                    console.warn('Conversão WAV falhou, enviando formato original:', convErr);
+                    audioBlob = rawBlob; // fallback
+                }
+
+                // Passo 1: Criar job no Speechmatics
+                setTranscriptionStatus(true, 'Criando job de transcrição...');
+                const formData = new FormData();
+                formData.append('data_file', audioBlob, 'consulta.wav');
+                formData.append('config', JSON.stringify({
+                    type: 'transcription',
+                    transcription_config: {
+                        language: 'pt',
+                        diarization: 'speaker',
+                        operating_point: 'enhanced'
+                    }
+                }));
+
+                const jobResponse = await fetch('https://asr.api.speechmatics.com/v2/jobs/', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${SPEECHMATICS_API_KEY}`
+                    },
+                    body: formData
+                });
+
+                if (!jobResponse.ok) {
+                    const errText = await jobResponse.text();
+                    throw new Error(`Erro ao criar job: ${jobResponse.status} - ${errText}`);
+                }
+
+                const jobData = await jobResponse.json();
+                const jobId = jobData.id;
+                setTranscriptionStatus(true, `Job criado (${jobId}). Aguardando processamento...`);
+
+                // Passo 2: Polling até o job terminar
+                let jobStatus = 'running';
+                let attempts = 0;
+                while (jobStatus !== 'done' && jobStatus !== 'rejected' && attempts < 120) {
+                    await new Promise(r => setTimeout(r, 3000));
+                    attempts++;
+                    const statusResp = await fetch(`https://asr.api.speechmatics.com/v2/jobs/${jobId}`, {
+                        headers: { 'Authorization': `Bearer ${SPEECHMATICS_API_KEY}` }
+                    });
+                    if (!statusResp.ok) continue;
+                    const statusData = await statusResp.json();
+                    jobStatus = statusData.job?.status || 'running';
+                    const pct = statusData.job?.duration ? Math.min(99, Math.round((attempts / 40) * 100)) : '...';
+                    setTranscriptionStatus(true, `Transcrevendo... aguarde (${pct}%)`);
+                }
+
+                if (jobStatus === 'rejected') {
+                    throw new Error('O job foi rejeitado pelo Speechmatics. Verifique o áudio enviado.');
+                }
+                if (jobStatus !== 'done') {
+                    throw new Error('Timeout: a transcrição demorou mais que o esperado. Tente novamente.');
+                }
+
+                // Passo 3: Buscar resultado
+                setTranscriptionStatus(true, 'Baixando transcrição...');
+                const transcriptResp = await fetch(`https://asr.api.speechmatics.com/v2/jobs/${jobId}/transcript?format=json-v2`, {
+                    headers: { 'Authorization': `Bearer ${SPEECHMATICS_API_KEY}` }
+                });
+
+                if (!transcriptResp.ok) {
+                    throw new Error(`Erro ao buscar transcrição: ${transcriptResp.status}`);
+                }
+
+                const transcriptData = await transcriptResp.json();
+
+                // Passo 4: Formatar com diarização (separação por speaker)
+                const textoFormatado = formatarTranscricaoComDiarizacao(transcriptData);
+
+                if (historiaDoenca.value.trim()) {
+                    historiaDoenca.value += '\n\n' + textoFormatado;
+                } else {
+                    historiaDoenca.value = textoFormatado;
+                }
+                historiaDoenca.scrollTop = historiaDoenca.scrollHeight;
+
+                setTranscriptionStatus(true, '✅ Transcrição concluída com sucesso!');
+                updateAPIStatus('Transcrição concluída', 'connected');
+                setTimeout(() => setTranscriptionStatus(false), 4000);
+
+            } catch (err) {
+                console.error('Erro Speechmatics:', err);
+                setTranscriptionStatus(true, '❌ Erro: ' + err.message);
+                updateAPIStatus('Erro na transcrição', 'disconnected');
+                alert('Erro na transcrição: ' + err.message);
+            }
+        }
+
+        function formatarTranscricaoComDiarizacao(data) {
+            // Extrair resultados com info de speaker
+            const results = data.results || [];
+            if (!results.length) return '(Nenhuma fala detectada)';
+
+            // Agrupar palavras por speaker em sequência
+            let linhas = [];
+            let speakerAtual = null;
+            let buffer = [];
+
+            for (const result of results) {
+                if (result.type !== 'word' && result.type !== 'punctuation') continue;
+                const alternatives = result.alternatives || [];
+                const alt = alternatives[0] || {};
+                const speaker = alt.speaker || result.speaker || 'S1';
+                const content = alt.content || result.content || '';
+
+                if (speaker !== speakerAtual) {
+                    if (buffer.length > 0) {
+                        const label = rotularSpeaker(speakerAtual, linhas.length);
+                        linhas.push(`${label}: ${buffer.join(' ').trim()}`);
+                    }
+                    speakerAtual = speaker;
+                    buffer = [];
+                }
+                // Pontuações colam na palavra anterior, sem espaço
+                if (result.type === 'punctuation') {
+                    if (buffer.length > 0) {
+                        buffer[buffer.length - 1] += content;
+                    }
+                } else {
+                    buffer.push(content);
+                }
+            }
+
+            // Último bloco
+            if (buffer.length > 0) {
+                const label = rotularSpeaker(speakerAtual, linhas.length);
+                linhas.push(`${label}: ${buffer.join(' ').trim()}`);
+            }
+
+            if (!linhas.length) return '(Nenhuma fala detectada)';
+
+            const cabecalho = `--- TRANSCRIÇÃO DA CONSULTA (Speechmatics) ---\n`;
+            return cabecalho + linhas.join('\n');
+        }
+
+        // ============================================
+        // FUNÇÃO GERAR HDA COM IA (Google Gemini)
+        // ============================================
+        async function gerarHDAComIA() {
+            const conversa = document.getElementById('historia-doenca').value.trim();
+            const hdaField = document.getElementById('historia-doenca-hda');
+            const loadingEl = document.getElementById('hda-loading');
+            const btnGerar = document.getElementById('btn-gerar-hda');
+
+            if (!conversa) {
+                alert('O campo "Conversa com o Paciente" está vazio. Grave ou escreva a conversa primeiro.');
+                return;
+            }
+
+            btnGerar.disabled = true;
+            loadingEl.style.display = 'inline';
+
+            const prompt = `Você é um assistente médico especializado em documentação clínica.
+
+A seguir está a transcrição de uma consulta médica com separação por interlocutor (Médico/Paciente).
+
+Sua tarefa é:
+1. Extrair APENAS as falas e informações fornecidas pelo PACIENTE (ignore completamente o que o médico disse).
+2. Organizar essas informações em uma História da Doença Atual (HDA) completa, clara e tecnicamente adequada para prontuário médico.
+3. Use linguagem clínica objetiva (terceira pessoa, tempo verbal adequado).
+4. Organize seguindo a estrutura: início dos sintomas, características, evolução, fatores de piora/melhora, sintomas associados, impacto funcional.
+5. NÃO invente informações. Use apenas o que o paciente relatou.
+6. Seja conciso, mas completo.
+
+TRANSCRIÇÃO DA CONSULTA:
+${conversa}
+
+Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
+
+            try {
+                const response = await fetch(
+                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyDpLx42pWdrplfLJJbHtKbesdAnQzZIgKE',
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: { temperature: 0.2, maxOutputTokens: 1024 }
+                        })
+                    }
+                );
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Erro na API Gemini: ${response.status} - ${errText}`);
+                }
+
+                const data = await response.json();
+                const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                if (!texto) throw new Error('A IA não retornou texto. Tente novamente.');
+
+                hdaField.value = texto.trim();
+                hdaField.scrollTop = 0;
+
+            } catch (err) {
+                console.error('Erro gerarHDA:', err);
+                alert('Erro ao gerar HDA: ' + err.message);
+            } finally {
+                btnGerar.disabled = false;
+                loadingEl.style.display = 'none';
+            }
+        }
+
+                // Heurística: primeiro speaker = Médico, segundo = Paciente, demais = Participante N
+        const speakerLabels = {};
+        let speakerCount = 0;
+        function rotularSpeaker(speakerId, posicao) {
+            if (!speakerLabels[speakerId]) {
+                speakerCount++;
+                if (speakerCount === 1) speakerLabels[speakerId] = '👨‍⚕️ Médico';
+                else if (speakerCount === 2) speakerLabels[speakerId] = '🧑 Paciente';
+                else speakerLabels[speakerId] = `🗣️ Participante ${speakerCount}`;
+            }
+            return speakerLabels[speakerId];
         }
 
         // ============================================
@@ -3556,9 +3826,22 @@
                     if (isRecording) {
                         pararReconhecimentoVoz();
                     } else {
+                        // Reset speaker labels para nova consulta
+                        Object.keys(speakerLabels).forEach(k => delete speakerLabels[k]);
+                        speakerCount = 0;
                         iniciarReconhecimentoVoz();
                     }
                 });
+            }
+            const stopBtn = document.getElementById('stop-transcription-btn');
+            if (stopBtn) {
+                stopBtn.addEventListener('click', function() {
+                    pararReconhecimentoVoz();
+                });
+            }
+            const btnGerarHDA = document.getElementById('btn-gerar-hda');
+            if (btnGerarHDA) {
+                btnGerarHDA.addEventListener('click', gerarHDAComIA);
             }
         }
 
@@ -4410,6 +4693,20 @@
                             ${consulta.queixaPrincipal}
                         </div>
                     </div>
+                    ${consulta.historiaDoencaHda ? `
+                    <div class="detail-section">
+                        <h3><i class="fas fa-notes-medical"></i> História da Doença Atual (HDA)</h3>
+                        <div class="detail-content" style="white-space: pre-line;">
+                            ${consulta.historiaDoencaHda}
+                        </div>
+                    </div>` : ''}
+                    ${consulta.historiaDoenca ? `
+                    <div class="detail-section">
+                        <h3><i class="fas fa-microphone-alt"></i> Conversa com o Paciente</h3>
+                        <div class="detail-content" style="white-space: pre-line; font-size: 0.9rem; color: #555;">
+                            ${consulta.historiaDoenca}
+                        </div>
+                    </div>` : ''}
                     <div class="detail-section">
                         <h3><i class="fas fa-stethoscope"></i> Diagnóstico</h3>
                         <div class="detail-content" style="background: #e3f2fd; font-size: 1.1rem; font-weight: 600; color: var(--primary-color);">
@@ -4490,6 +4787,7 @@
                 // Preencher dados da consulta
                 document.getElementById('queixa-principal').value = consulta.queixaPrincipal || '';
                 document.getElementById('historia-doenca').value = consulta.historiaDoenca || '';
+                document.getElementById('historia-doenca-hda').value = consulta.historiaDoencaHda || '';
                 document.getElementById('antecedentes').value = consulta.antecedentes || '';
                 
                 // Preencher checkboxes de sintomas
@@ -5074,6 +5372,7 @@ Responda EXATAMENTE no formato especificado.`
             return {
                 queixaPrincipal: document.getElementById('queixa-principal').value,
                 historiaDoenca: document.getElementById('historia-doenca').value,
+                historiaDoencaHda: document.getElementById('historia-doenca-hda').value,
                 antecedentes: document.getElementById('antecedentes').value,
                 sintomas: Array.from(document.querySelectorAll('input[name="sintomas"]:checked')).map(cb => cb.value),
                 pressaoArterial: document.getElementById('pressao-arterial').value,
@@ -5106,7 +5405,10 @@ INFORMAÇÕES DEMOGRÁFICAS:
 QUEIXA PRINCIPAL:
 ${dados.queixaPrincipal}
 
-HISTÓRIA DA DOENÇA ATUAL:
+HISTÓRIA DA DOENÇA ATUAL (HDA):
+${dados.historiaDoencaHda || dados.historiaDoenca || 'Não informado'}
+
+CONVERSA COM O PACIENTE (transcrição):
 ${dados.historiaDoenca || 'Não informado'}
 
 SINTOMAS RELATADOS:
@@ -6065,6 +6367,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                         ...consultas[consultaIndex],
                         queixaPrincipal: document.getElementById('queixa-principal').value,
                         historiaDoenca: document.getElementById('historia-doenca').value,
+                        historiaDoencaHda: document.getElementById('historia-doenca-hda').value,
                         antecedentes: document.getElementById('antecedentes').value,
                         sintomas: Array.from(document.querySelectorAll('input[name="sintomas"]:checked')).map(cb => cb.value),
                         pressaoArterial: document.getElementById('pressao-arterial').value,
@@ -6098,6 +6401,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                     data: dataFormatada,
                     queixaPrincipal: document.getElementById('queixa-principal').value,
                     historiaDoenca: document.getElementById('historia-doenca').value,
+                    historiaDoencaHda: document.getElementById('historia-doenca-hda').value,
                     antecedentes: document.getElementById('antecedentes').value,
                     sintomas: Array.from(document.querySelectorAll('input[name="sintomas"]:checked')).map(cb => cb.value),
                     pressaoArterial: document.getElementById('pressao-arterial').value,
