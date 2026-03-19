@@ -1894,6 +1894,135 @@
             background: #e67e22;
         }
 
+        .admin-btn-info {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .admin-btn-info:hover {
+            background: var(--secondary-color);
+        }
+
+        /* ===== ACCESS LOG STYLES ===== */
+        .log-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .log-summary-card {
+            background: white;
+            border-radius: var(--border-radius);
+            padding: 18px 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            border-left: 4px solid var(--accent-color);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .log-user-name {
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .log-total-time {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: var(--dark-color);
+            letter-spacing: -0.5px;
+        }
+
+        .log-sessions-count {
+            font-size: 0.83rem;
+            color: var(--gray-color);
+        }
+
+        .log-sessions-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .log-sessions-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: 11px 14px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .log-sessions-table th:first-child { border-radius: 6px 0 0 0; }
+        .log-sessions-table th:last-child  { border-radius: 0 6px 0 0; }
+
+        .log-sessions-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--light-gray);
+            vertical-align: middle;
+        }
+
+        .log-sessions-table tr:hover td {
+            background: #f0f4ff;
+        }
+
+        .session-active-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #e8f8f5;
+            color: var(--accent-color);
+            border-radius: 20px;
+            padding: 3px 10px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .session-active-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 1.5s infinite;
+        }
+
+        .log-clear-btn {
+            background: none;
+            border: 1px solid var(--danger-color);
+            color: var(--danger-color);
+            padding: 6px 14px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .log-clear-btn:hover {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .log-section-subtitle {
+            color: var(--primary-color);
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        /* ============================= */
+
         .admin-section {
             background: #f8f9fa;
             padding: 20px;
@@ -2095,6 +2224,9 @@
                     <button class="admin-btn admin-btn-primary" onclick="toggleUserList()">
                         <i class="fas fa-list"></i> Listar Usuários
                     </button>
+                    <button class="admin-btn admin-btn-info" onclick="toggleLogsAcesso()">
+                        <i class="fas fa-chart-line"></i> Logs de Acesso
+                    </button>
                     <button class="admin-btn admin-btn-warning" onclick="ativarEdicaoCodigo()">
                         <i class="fas fa-code"></i> Editar Código
                     </button>
@@ -2145,6 +2277,37 @@
                     </thead>
                     <tbody id="users-list-body"></tbody>
                 </table>
+            </div>
+
+            <!-- Logs de Acesso -->
+            <div id="access-log-section" class="admin-section" style="display: none; border-left-color: var(--primary-color);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h4 style="margin-bottom: 0;"><i class="fas fa-chart-line"></i> Registros de Acesso ao Sistema</h4>
+                    <button class="log-clear-btn" onclick="limparLogsAcesso()">
+                        <i class="fas fa-trash"></i> Limpar Logs
+                    </button>
+                </div>
+
+                <!-- Resumo por usuário -->
+                <div id="log-summary-container"></div>
+
+                <!-- Tabela de sessões -->
+                <div class="table-container" style="margin-top: 20px;">
+                    <div class="log-section-subtitle">
+                        <i class="fas fa-history"></i> Histórico Completo de Sessões (mais recentes primeiro)
+                    </div>
+                    <table class="log-sessions-table">
+                        <thead>
+                            <tr>
+                                <th><i class="fas fa-user"></i>&nbsp; Usuário</th>
+                                <th><i class="fas fa-sign-in-alt"></i>&nbsp; Entrada</th>
+                                <th><i class="fas fa-sign-out-alt"></i>&nbsp; Saída</th>
+                                <th><i class="fas fa-clock"></i>&nbsp; Duração da Sessão</th>
+                            </tr>
+                        </thead>
+                        <tbody id="access-log-body"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -3029,6 +3192,9 @@
                     };
                     localStorage.setItem('med_system_sessao', JSON.stringify(sessao));
                     
+                    // Registrar evento de login nos logs de acesso
+                    registrarLogin(usuario, sessao.token);
+                    
                     document.getElementById('welcomeOverlay').style.display = 'none';
                     document.getElementById('user-info-bar').style.display = 'block';
                     document.getElementById('mainHeader').style.display = 'block';
@@ -3063,6 +3229,9 @@
         }
 
         function fazerLogout() {
+            // Registrar evento de logout nos logs de acesso (antes de limpar a sessão)
+            registrarLogout();
+            
             // Salvar dados do usuário atual antes de sair
             const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
             if (sessao.usuario) {
@@ -3409,6 +3578,154 @@
         });
 
         document.getElementById('logoutBtn').addEventListener('click', fazerLogout);
+
+        // ============================================
+        // FUNÇÕES DE LOG DE ACESSO (SOMENTE ADMIN)
+        // ============================================
+
+        function registrarLogin(usuario, token) {
+            try {
+                const log = JSON.parse(localStorage.getItem('med_system_access_log') || '[]');
+                log.push({
+                    usuario: usuario,
+                    loginAt: new Date().toISOString(),
+                    logoutAt: null,
+                    duracaoSegundos: null,
+                    token: token
+                });
+                if (log.length > 500) log.splice(0, log.length - 500);
+                localStorage.setItem('med_system_access_log', JSON.stringify(log));
+            } catch(e) { console.warn('Erro ao registrar login:', e); }
+        }
+
+        function registrarLogout() {
+            try {
+                const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
+                if (!sessao.usuario || !sessao.token) return;
+                const log = JSON.parse(localStorage.getItem('med_system_access_log') || '[]');
+                for (let i = log.length - 1; i >= 0; i--) {
+                    if (log[i].usuario === sessao.usuario && log[i].token === sessao.token && !log[i].logoutAt) {
+                        log[i].logoutAt = new Date().toISOString();
+                        log[i].duracaoSegundos = Math.floor(
+                            (new Date(log[i].logoutAt) - new Date(log[i].loginAt)) / 1000
+                        );
+                        break;
+                    }
+                }
+                localStorage.setItem('med_system_access_log', JSON.stringify(log));
+            } catch(e) { console.warn('Erro ao registrar logout:', e); }
+        }
+
+        function formatarDuracaoSegundos(segundos) {
+            if (segundos === null || segundos === undefined || isNaN(segundos) || segundos < 0) return '—';
+            const h = Math.floor(segundos / 3600);
+            const m = Math.floor((segundos % 3600) / 60);
+            const s = segundos % 60;
+            if (h > 0) return `${h}h ${m}m ${s}s`;
+            if (m > 0) return `${m}m ${s}s`;
+            return `${s}s`;
+        }
+
+        function toggleLogsAcesso() {
+            const section = document.getElementById('access-log-section');
+            const isHidden = section.style.display === 'none' || section.style.display === '';
+            document.getElementById('add-user-section').style.display = 'none';
+            document.getElementById('user-list-section').style.display = 'none';
+            section.style.display = isHidden ? 'block' : 'none';
+            if (isHidden) renderizarLogsAcesso();
+        }
+
+        function renderizarLogsAcesso() {
+            const log = JSON.parse(localStorage.getItem('med_system_access_log') || '[]');
+
+            // -- Resumo acumulado por usuário --
+            const resumo = {};
+            log.forEach(entry => {
+                if (!resumo[entry.usuario]) {
+                    resumo[entry.usuario] = { totalSegundos: 0, sessoes: 0, ativo: false };
+                }
+                resumo[entry.usuario].sessoes++;
+                if (entry.logoutAt && entry.duracaoSegundos !== null) {
+                    resumo[entry.usuario].totalSegundos += entry.duracaoSegundos;
+                } else if (!entry.logoutAt) {
+                    const decorrido = Math.floor((new Date() - new Date(entry.loginAt)) / 1000);
+                    resumo[entry.usuario].totalSegundos += decorrido;
+                    resumo[entry.usuario].ativo = true;
+                }
+            });
+
+            const summaryContainer = document.getElementById('log-summary-container');
+            if (Object.keys(resumo).length === 0) {
+                summaryContainer.innerHTML = `
+                    <div style="text-align:center; padding:30px 20px; color:var(--gray-color);">
+                        <i class="fas fa-inbox" style="font-size:3rem; opacity:0.4; display:block; margin-bottom:15px;"></i>
+                        Nenhum acesso registrado ainda. Os logs serão gerados a partir do próximo login.
+                    </div>`;
+            } else {
+                const cards = Object.keys(resumo).sort().map(u => {
+                    const r = resumo[u];
+                    const badgeAtivo = r.ativo
+                        ? `<span class="session-active-badge"><span class="session-active-dot"></span> Online agora</span>`
+                        : '';
+                    return `<div class="log-summary-card">
+                        <div class="log-user-name">
+                            <i class="fas fa-user-circle"></i> ${u} ${badgeAtivo}
+                        </div>
+                        <div class="log-total-time">${formatarDuracaoSegundos(r.totalSegundos)}</div>
+                        <div class="log-sessions-count">
+                            <i class="fas fa-history"></i> ${r.sessoes} sessão(ões) no total
+                        </div>
+                    </div>`;
+                }).join('');
+                summaryContainer.innerHTML = `
+                    <div style="margin-bottom:10px; font-size:0.85rem; color:var(--gray-color);">
+                        <i class="fas fa-info-circle"></i>
+                        Tempo total acumulado por usuário (sessão ativa incluída no cálculo)
+                    </div>
+                    <div class="log-summary-grid">${cards}</div>`;
+            }
+
+            // -- Tabela de sessões (mais recentes primeiro) --
+            const tbody = document.getElementById('access-log-body');
+            tbody.innerHTML = '';
+            const reversed = [...log].reverse();
+
+            if (reversed.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--gray-color); padding:30px;">
+                    Nenhuma sessão registrada.</td></tr>`;
+                return;
+            }
+
+            reversed.forEach(entry => {
+                const loginFormatado = entry.loginAt
+                    ? new Date(entry.loginAt).toLocaleString('pt-BR') : '—';
+                const logoutFormatado = entry.logoutAt
+                    ? new Date(entry.logoutAt).toLocaleString('pt-BR')
+                    : `<span class="session-active-badge"><span class="session-active-dot"></span> Sessão ativa</span>`;
+                let duracaoStr;
+                if (entry.logoutAt && entry.duracaoSegundos !== null) {
+                    duracaoStr = formatarDuracaoSegundos(entry.duracaoSegundos);
+                } else {
+                    const agora = Math.floor((new Date() - new Date(entry.loginAt)) / 1000);
+                    duracaoStr = `${formatarDuracaoSegundos(agora)}
+                        <span style="color:var(--accent-color); font-size:0.78rem; margin-left:4px;">(em andamento)</span>`;
+                }
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><i class="fas fa-user" style="color:var(--primary-color); margin-right:6px;"></i><strong>${entry.usuario}</strong></td>
+                    <td><i class="fas fa-calendar-check" style="color:var(--accent-color); margin-right:5px;"></i>${loginFormatado}</td>
+                    <td>${logoutFormatado}</td>
+                    <td>${duracaoStr}</td>`;
+                tbody.appendChild(row);
+            });
+        }
+
+        function limparLogsAcesso() {
+            if (confirm('Tem certeza que deseja apagar todos os registros de acesso? Esta ação não pode ser desfeita.')) {
+                localStorage.removeItem('med_system_access_log');
+                renderizarLogsAcesso();
+            }
+        }
 
         // ============================================
         // INICIALIZAÇÃO
