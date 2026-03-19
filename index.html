@@ -3232,7 +3232,7 @@
 
         function fazerLogout() {
             // Registrar evento de logout nos logs de acesso (antes de limpar a sessão)
-            registrarLogout();
+            registrarLogout();   // async, dispara em background sem bloquear o logout
             
             // Salvar dados do usuário atual antes de sair
             const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
@@ -3583,40 +3583,75 @@
         document.getElementById('logoutBtn').addEventListener('click', fazerLogout);
 
         // ============================================
-        // FUNÇÕES DE LOG DE ACESSO (SOMENTE ADMIN)
+        // FUNÇÕES DE LOG DE ACESSO — FIREBASE (SOMENTE ADMIN)
         // ============================================
 
-        function registrarLogin(usuario, token) {
+        // URL do nó de logs no mesmo projeto Firebase já configurado
+        const FIREBASE_BASE_URL = 'https://centrodiagnosticomedico-ccac4-default-rtdb.firebaseio.com';
+        const FIREBASE_LOG_URL  = FIREBASE_BASE_URL + '/med_system_access_log';
+
+        /**
+         * Registra login na nuvem via Firebase POST.
+         * O Firebase devolve uma key única que guardamos no localStorage
+         * apenas para identificar esta sessão no momento do logout.
+         */
+        async function registrarLogin(usuario, token) {
+            const entry = {
+                usuario:          usuario,
+                loginAt:          new Date().toISOString(),
+                logoutAt:         null,
+                duracaoSegundos:  null,
+                token:            token
+            };
             try {
-                const log = JSON.parse(localStorage.getItem('med_system_access_log') || '[]');
-                log.push({
-                    usuario: usuario,
-                    loginAt: new Date().toISOString(),
-                    logoutAt: null,
-                    duracaoSegundos: null,
-                    token: token
+                const resp = await fetch(FIREBASE_LOG_URL + '.json', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify(entry)
                 });
-                if (log.length > 500) log.splice(0, log.length - 500);
-                localStorage.setItem('med_system_access_log', JSON.stringify(log));
-            } catch(e) { console.warn('Erro ao registrar login:', e); }
+                if (resp.ok) {
+                    const data = await resp.json();      // { "name": "-KEY..." }
+                    // Guardar a key localmente só para conseguir fazer PATCH no logout
+                    localStorage.setItem('med_log_current_key', data.name);
+                }
+            } catch(e) {
+                console.warn('Firebase log indisponível (login):', e);
+            }
         }
 
-        function registrarLogout() {
+        /**
+         * Registra logout atualizando o nó específico via Firebase PATCH.
+         */
+        async function registrarLogout() {
+            const key = localStorage.getItem('med_log_current_key');
+            if (!key) return;
+            const logoutAt = new Date().toISOString();
+
+            // Buscar loginAt para calcular duração
+            let duracaoSegundos = null;
             try {
-                const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
-                if (!sessao.usuario || !sessao.token) return;
-                const log = JSON.parse(localStorage.getItem('med_system_access_log') || '[]');
-                for (let i = log.length - 1; i >= 0; i--) {
-                    if (log[i].usuario === sessao.usuario && log[i].token === sessao.token && !log[i].logoutAt) {
-                        log[i].logoutAt = new Date().toISOString();
-                        log[i].duracaoSegundos = Math.floor(
-                            (new Date(log[i].logoutAt) - new Date(log[i].loginAt)) / 1000
+                const getResp = await fetch(FIREBASE_LOG_URL + '/' + key + '.json');
+                if (getResp.ok) {
+                    const entry = await getResp.json();
+                    if (entry && entry.loginAt) {
+                        duracaoSegundos = Math.floor(
+                            (new Date(logoutAt) - new Date(entry.loginAt)) / 1000
                         );
-                        break;
                     }
                 }
-                localStorage.setItem('med_system_access_log', JSON.stringify(log));
-            } catch(e) { console.warn('Erro ao registrar logout:', e); }
+            } catch(e) { /* silencioso */ }
+
+            try {
+                await fetch(FIREBASE_LOG_URL + '/' + key + '.json', {
+                    method:  'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ logoutAt, duracaoSegundos })
+                });
+            } catch(e) {
+                console.warn('Firebase log indisponível (logout):', e);
+            } finally {
+                localStorage.removeItem('med_log_current_key');
+            }
         }
 
         function formatarDuracaoSegundos(segundos) {
@@ -3638,11 +3673,44 @@
             if (isHidden) renderizarLogsAcesso();
         }
 
-        function renderizarLogsAcesso() {
-            const log = JSON.parse(localStorage.getItem('med_system_access_log') || '[]');
+        /**
+         * Busca todos os logs do Firebase e renderiza o painel do admin.
+         */
+        async function renderizarLogsAcesso() {
+            const summaryContainer = document.getElementById('log-summary-container');
+            const tbody = document.getElementById('access-log-body');
+
+            // Estado de carregando
+            summaryContainer.innerHTML = `
+                <div style="text-align:center; padding:20px; color:var(--gray-color);">
+                    <i class="fas fa-spinner fa-spin" style="font-size:2rem; margin-bottom:10px; display:block;"></i>
+                    Carregando registros da nuvem...
+                </div>`;
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--gray-color);">
+                Aguarde...</td></tr>`;
+
+            let logObj = {};
+            try {
+                const resp = await fetch(FIREBASE_LOG_URL + '.json');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data && typeof data === 'object') logObj = data;
+                }
+            } catch(e) {
+                summaryContainer.innerHTML = `<div style="color:var(--danger-color); padding:15px;">
+                    <i class="fas fa-exclamation-circle"></i> Erro ao conectar ao Firebase. Verifique a conexão.</div>`;
+                tbody.innerHTML = '';
+                return;
+            }
+
+            // Converter objeto Firebase em array ordenado por loginAt
+            const log = Object.entries(logObj)
+                .map(([key, val]) => ({ ...val, _key: key }))
+                .sort((a, b) => new Date(a.loginAt) - new Date(b.loginAt));
 
             // -- Resumo acumulado por usuário --
             const resumo = {};
+            const keyAtual = localStorage.getItem('med_log_current_key');
             log.forEach(entry => {
                 if (!resumo[entry.usuario]) {
                     resumo[entry.usuario] = { totalSegundos: 0, sessoes: 0, ativo: false };
@@ -3657,8 +3725,7 @@
                 }
             });
 
-            const summaryContainer = document.getElementById('log-summary-container');
-            if (Object.keys(resumo).length === 0) {
+            if (log.length === 0) {
                 summaryContainer.innerHTML = `
                     <div style="text-align:center; padding:30px 20px; color:var(--gray-color);">
                         <i class="fas fa-inbox" style="font-size:3rem; opacity:0.4; display:block; margin-bottom:15px;"></i>
@@ -3682,24 +3749,21 @@
                 }).join('');
                 summaryContainer.innerHTML = `
                     <div style="margin-bottom:10px; font-size:0.85rem; color:var(--gray-color);">
-                        <i class="fas fa-info-circle"></i>
-                        Tempo total acumulado por usuário (sessão ativa incluída no cálculo)
+                        <i class="fas fa-cloud" style="color:var(--accent-color);"></i>
+                        Dados em tempo real — qualquer acesso, de qualquer dispositivo
                     </div>
                     <div class="log-summary-grid">${cards}</div>`;
             }
 
             // -- Tabela de sessões (mais recentes primeiro) --
-            const tbody = document.getElementById('access-log-body');
             tbody.innerHTML = '';
-            const reversed = [...log].reverse();
-
-            if (reversed.length === 0) {
+            if (log.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--gray-color); padding:30px;">
                     Nenhuma sessão registrada.</td></tr>`;
                 return;
             }
 
-            reversed.forEach(entry => {
+            [...log].reverse().forEach(entry => {
                 const loginFormatado = entry.loginAt
                     ? new Date(entry.loginAt).toLocaleString('pt-BR') : '—';
                 const logoutFormatado = entry.logoutAt
@@ -3723,11 +3787,17 @@
             });
         }
 
-        function limparLogsAcesso() {
-            if (confirm('Tem certeza que deseja apagar todos os registros de acesso? Esta ação não pode ser desfeita.')) {
-                localStorage.removeItem('med_system_access_log');
-                renderizarLogsAcesso();
+        /**
+         * Limpa todos os logs apagando o nó inteiro no Firebase.
+         */
+        async function limparLogsAcesso() {
+            if (!confirm('Tem certeza que deseja apagar todos os registros de acesso? Esta ação não pode ser desfeita.')) return;
+            try {
+                await fetch(FIREBASE_LOG_URL + '.json', { method: 'DELETE' });
+            } catch(e) {
+                console.warn('Erro ao limpar logs no Firebase:', e);
             }
+            renderizarLogsAcesso();
         }
 
         // ============================================
