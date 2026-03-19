@@ -3519,6 +3519,7 @@
             document.getElementById('mainContent').style.display = 'block';
             document.getElementById('mainFooter').style.display = 'block';
             document.getElementById('apiStatus').style.display = sessao.role === 'administrador' ? 'flex' : 'none';
+            document.getElementById('dashboard-ia-status').style.display = sessao.role === 'administrador' ? 'block' : 'none';
             
             if (sessao.role === 'administrador') {
                 document.getElementById('admin-panel').style.display = 'block';
