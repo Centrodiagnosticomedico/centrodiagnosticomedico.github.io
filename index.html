@@ -5150,7 +5150,9 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             if (!paciente) return;
             mostrarPagina('consultas');
             setTimeout(() => {
-                document.getElementById('consult-patient-name').textContent = paciente.nome;
+                const _nameEl1 = document.getElementById('consult-patient-name');
+                _nameEl1.textContent = paciente.nome;
+                _nameEl1.setAttribute('data-paciente-id', paciente.id);
                 document.getElementById('consult-patient-info').textContent = 
                     `CPF: ${paciente.cpf} | Idade: ${calcularIdade(paciente.dataNascimento)} anos | Sexo: ${paciente.sexo || 'Não informado'}`;
                 document.getElementById('patient-search-results').style.display = 'none';
@@ -5175,7 +5177,9 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             mostrarPagina('consultas');
             setTimeout(() => {
                 // Preencher dados do paciente
-                document.getElementById('consult-patient-name').textContent = paciente.nome;
+                const _nameElEdit = document.getElementById('consult-patient-name');
+                _nameElEdit.textContent = paciente.nome;
+                _nameElEdit.setAttribute('data-paciente-id', paciente.id);
                 document.getElementById('consult-patient-info').textContent = 
                     `CPF: ${paciente.cpf} | Idade: ${calcularIdade(paciente.dataNascimento)} anos | Sexo: ${paciente.sexo || 'Não informado'}`;
                 
@@ -5401,8 +5405,9 @@ Achados de imagem: Avaliação por imagem pode excluir esta hipótese.`;
             const tratamentoLoading = document.getElementById('treatment-loading');
             tratamentoLoading.style.display = 'flex';
             try {
-                const pacienteNome = document.getElementById('consult-patient-name').textContent;
-                const paciente = pacientes.find(p => p.nome === pacienteNome);
+                const _nameEl = document.getElementById('consult-patient-name');
+                const _pidAttr = _nameEl.getAttribute('data-paciente-id');
+                const paciente = _pidAttr ? pacientes.find(p => p.id === parseInt(_pidAttr)) : pacientes.find(p => p.nome === _nameEl.textContent.trim());
                 const prompt = criarPromptTratamento(paciente, diagnostico, dadosConsulta);
                 const respostaIA = await chamarManusAPI([
                     { 
@@ -5619,8 +5624,9 @@ Assinatura do Médico`;
 
         function verificarAlergiasTratamento(tratamento) {
             // Coletar texto de alergias de todas as fontes disponíveis
-            const pacienteNome = document.getElementById('consult-patient-name').textContent;
-            const paciente = pacientes.find(p => p.nome === pacienteNome);
+            const _nameEl2 = document.getElementById('consult-patient-name');
+            const _pid2 = _nameEl2.getAttribute('data-paciente-id');
+            const paciente = _pid2 ? pacientes.find(p => p.id === parseInt(_pid2)) : pacientes.find(p => p.nome === _nameEl2.textContent.trim());
 
             const fontes = [];
             if (paciente && paciente.historicoMedico) fontes.push(paciente.historicoMedico);
@@ -5720,8 +5726,9 @@ Assinatura do Médico`;
                 alert('Por favor, preencha a queixa principal antes de gerar o diagnóstico.');
                 return;
             }
-            const pacienteNome = document.getElementById('consult-patient-name').textContent;
-            const paciente = pacientes.find(p => p.nome === pacienteNome);
+            const _nameEl2 = document.getElementById('consult-patient-name');
+            const _pid2 = _nameEl2.getAttribute('data-paciente-id');
+            const paciente = _pid2 ? pacientes.find(p => p.id === parseInt(_pid2)) : pacientes.find(p => p.nome === _nameEl2.textContent.trim());
             const dadosConsulta = coletarDadosConsulta();
             
             // Usar a análise do campo de imagens (PROBLEMA 2)
@@ -6189,7 +6196,9 @@ Justificativa: [texto com evidências integrando clínica e imagem]
             if (!paciente) return;
             mostrarPagina('consultas');
             setTimeout(() => {
-                document.getElementById('consult-patient-name').textContent = paciente.nome;
+                const _nameEl3 = document.getElementById('consult-patient-name');
+                _nameEl3.textContent = paciente.nome;
+                _nameEl3.setAttribute('data-paciente-id', paciente.id);
                 document.getElementById('consult-patient-info').textContent = 
                     `CPF: ${paciente.cpf} | Idade: ${calcularIdade(paciente.dataNascimento)} anos | Sexo: ${paciente.sexo || 'Não informado'}`;
                 document.getElementById('patient-search-results').style.display = 'none';
@@ -6682,7 +6691,9 @@ Justificativa: [texto com evidências integrando clínica e imagem]
 
         window.selecionarPacienteConsulta = function(pacienteId) {
             const paciente = pacientes.find(p => p.id === pacienteId);
-            document.getElementById('consult-patient-name').textContent = paciente.nome;
+            const nameEl = document.getElementById('consult-patient-name');
+            nameEl.textContent = paciente.nome;
+            nameEl.setAttribute('data-paciente-id', paciente.id);
             document.getElementById('consult-patient-info').textContent = 
                 `CPF: ${paciente.cpf} | Idade: ${calcularIdade(paciente.dataNascimento)} anos | Sexo: ${paciente.sexo || 'Não informado'}`;
             document.getElementById('patient-search-results').style.display = 'none';
@@ -6692,8 +6703,10 @@ Justificativa: [texto com evidências integrando clínica e imagem]
         };
 
         function salvarConsulta() {
-            const pacienteNome = document.getElementById('consult-patient-name').textContent;
-            const paciente = pacientes.find(p => p.nome === pacienteNome);
+            const nameEl = document.getElementById('consult-patient-name');
+            const pacienteIdAttr = nameEl.getAttribute('data-paciente-id');
+            const pacienteId = pacienteIdAttr ? parseInt(pacienteIdAttr) : null;
+            const paciente = pacienteId ? pacientes.find(p => p.id === pacienteId) : null;
             if (!paciente) {
                 alert('⚠️ Nenhum paciente selecionado!\nBusque e selecione um paciente antes de salvar a consulta.');
                 return;
