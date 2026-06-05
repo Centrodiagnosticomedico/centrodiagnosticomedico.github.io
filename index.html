@@ -3227,6 +3227,7 @@
                     
                     // Iniciar monitoramento de inatividade (auto-logout em 24h)
                     iniciarMonitoramentoInatividade();
+                    iniciarVerificacaoLogoutForcado();
                     
                     return true;
                 }
@@ -3237,6 +3238,7 @@
         function fazerLogout() {
             // Parar monitoramento de inatividade
             pararMonitoramentoInatividade();
+            pararVerificacaoLogoutForcado();
             
             // Registrar evento de logout nos logs de acesso (antes de limpar a sessão)
             registrarLogout();   // async, dispara em background sem bloquear o logout
@@ -3384,10 +3386,13 @@
                     <td><span class="role-badge ${user.role === 'administrador' ? 'role-admin' : 'role-user'}">${user.role === 'administrador' ? 'Admin' : 'Usuário'}</span></td>
                     <td>${user.podeAdicionarUsuarios ? '✓' : '✗'}</td>
                     <td>${user.podeEditarCodigo ? '✓' : '✗'}</td>
-                    <td>
+                    <td style="display:flex;gap:6px;align-items:center;">
                         ${key !== 'administrador' ? 
                             `<button class="delete-user-btn" onclick="excluirUsuario('${key}')">
                                 <i class="fas fa-trash"></i>
+                            </button>
+                            <button class="delete-user-btn" title="Forçar logout" style="background:#e67e22;" onclick="forcerLogoutUsuario('${user.usuario}')">
+                                <i class="fas fa-sign-out-alt"></i>
                             </button>` : 
                             '<span style="color: #999;">Protegido</span>'}
                     </td>
@@ -3735,6 +3740,48 @@
         // URL do nó de logs no mesmo projeto Firebase já configurado
         const FIREBASE_BASE_URL = 'https://centrodiagnosticomedico-ccac4-default-rtdb.firebaseio.com';
         const FIREBASE_LOG_URL  = FIREBASE_BASE_URL + '/med_system_access_log';
+        // URL para forçar logout via Firebase
+        const FIREBASE_FORCE_LOGOUT_URL = FIREBASE_BASE_URL + '/med_system_force_logout';
+
+        // Admin força logout de um usuário específico
+        async function forcerLogoutUsuario(usuario) {
+            if (!confirm('Deseja forçar o logout de "' + usuario + '"?\n\nEle será deslogado em até 1 minuto.')) return;
+            try {
+                await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + usuario + '.json', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ forcar: true, solicitadoEm: new Date().toISOString() })
+                });
+                alert('✅ Comando de logout enviado para "' + usuario + '".');
+            } catch(e) {
+                alert('Erro ao enviar comando: ' + e.message);
+            }
+        }
+
+        // Verifica a cada 60s se o admin forçou logout deste usuário
+        let _forceLogoutTimer = null;
+        async function verificarLogoutForcado() {
+            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
+            if (!sessao.usuario) return;
+            try {
+                const resp = await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + sessao.usuario + '.json');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (!data || !data.forcar) return;
+                // Limpar flag e deslogar
+                await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + sessao.usuario + '.json', { method: 'DELETE' });
+                fazerLogout();
+                setTimeout(() => alert('🔒 Sua sessão foi encerrada pelo administrador.\n\nFaça login novamente.'), 300);
+            } catch(e) { /* silencioso */ }
+        }
+        function iniciarVerificacaoLogoutForcado() {
+            if (_forceLogoutTimer) clearInterval(_forceLogoutTimer);
+            verificarLogoutForcado();
+            _forceLogoutTimer = setInterval(verificarLogoutForcado, 60000);
+        }
+        function pararVerificacaoLogoutForcado() {
+            if (_forceLogoutTimer) { clearInterval(_forceLogoutTimer); _forceLogoutTimer = null; }
+        }
 
         /**
          * Registra login na nuvem via Firebase POST.
