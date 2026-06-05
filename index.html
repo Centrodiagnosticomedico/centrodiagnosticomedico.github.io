@@ -3188,7 +3188,8 @@
                         podeAdicionarUsuarios: USUARIOS[key].podeAdicionarUsuarios,
                         podeEditarCodigo: USUARIOS[key].podeEditarCodigo,
                         token: Math.random().toString(36).substring(2) + Date.now().toString(36),
-                        dataHora: new Date().toISOString()
+                        dataHora: new Date().toISOString(),
+                        ultimaAtividade: new Date().toISOString()
                     };
                     localStorage.setItem('med_system_sessao', JSON.stringify(sessao));
                     
@@ -3224,6 +3225,9 @@
                     // Carregar dados do usuário após login
                     carregarDadosDoUsuario(usuario);
                     
+                    // Iniciar monitoramento de inatividade (auto-logout em 24h)
+                    iniciarMonitoramentoInatividade();
+                    
                     return true;
                 }
             }
@@ -3231,6 +3235,9 @@
         }
 
         function fazerLogout() {
+            // Parar monitoramento de inatividade
+            pararMonitoramentoInatividade();
+            
             // Registrar evento de logout nos logs de acesso (antes de limpar a sessão)
             registrarLogout();   // async, dispara em background sem bloquear o logout
             
@@ -3538,6 +3545,9 @@
             
             document.getElementById('dashboardDoctorName').textContent = 'Dr. ' + sessao.usuario;
             carregarDadosDoUsuario(sessao.usuario);
+            
+            // Iniciar monitoramento de inatividade ao restaurar sessão
+            iniciarMonitoramentoInatividade();
         }
 
 
@@ -3581,6 +3591,142 @@
         });
 
         document.getElementById('logoutBtn').addEventListener('click', fazerLogout);
+
+        // ============================================
+        // AUTO-LOGOUT POR INATIVIDADE (24 HORAS)
+        // ============================================
+        const INATIVIDADE_MAX_MS = 24 * 60 * 60 * 1000; // 24 horas em milissegundos
+        let _inactivityTimer = null;
+
+        /**
+         * Atualiza o timestamp de última atividade do usuário no localStorage.
+         * Chamado em qualquer interação do usuário (mouse, teclado, toque).
+         */
+        function atualizarAtividade() {
+            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
+            if (sessao.usuario) {
+                sessao.ultimaAtividade = new Date().toISOString();
+                localStorage.setItem('med_system_sessao', JSON.stringify(sessao));
+            }
+        }
+
+        /**
+         * Verifica se o usuário ficou inativo por mais de 24h.
+         * Se sim, faz logout automático e registra no Firebase.
+         */
+        function verificarInatividade() {
+            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
+            if (!sessao.usuario) return; // não está logado
+
+            const ultimaAtividade = sessao.ultimaAtividade || sessao.dataHora;
+            if (!ultimaAtividade) return;
+
+            const agora = new Date();
+            const diff = agora - new Date(ultimaAtividade);
+
+            if (diff >= INATIVIDADE_MAX_MS) {
+                // Registrar auto-logout no Firebase antes de limpar sessão
+                registrarAutoLogout(sessao.usuario);
+
+                // Fazer logout silencioso
+                salvarDadosDoUsuario(sessao.usuario);
+                localStorage.removeItem('med_system_sessao');
+
+                document.getElementById('welcomeOverlay').style.display = 'flex';
+                document.getElementById('user-info-bar').style.display = 'none';
+                document.getElementById('mainHeader').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'none';
+                document.getElementById('mainFooter').style.display = 'none';
+                document.getElementById('apiStatus').style.display = 'none';
+                document.getElementById('admin-panel').style.display = 'none';
+                document.getElementById('codigo-editor-container').style.display = 'none';
+                document.getElementById('loginUsuario').value = '';
+                document.getElementById('loginSenha').value = '';
+                document.getElementById('login-error-message').style.display = 'none';
+
+                // Mostrar aviso ao usuário
+                setTimeout(() => {
+                    alert('⏰ Sessão encerrada automaticamente por inatividade (24 horas sem acesso).\n\nFaça login novamente para continuar.');
+                }, 300);
+            }
+        }
+
+        /**
+         * Registra no Firebase que houve um auto-logout por inatividade.
+         */
+        async function registrarAutoLogout(usuario) {
+            const key = localStorage.getItem('med_log_current_key');
+            const logoutAt = new Date().toISOString();
+
+            // Atualizar log de sessão existente com motivo de auto-logout
+            if (key) {
+                try {
+                    const getResp = await fetch(FIREBASE_LOG_URL + '/' + key + '.json');
+                    if (getResp.ok) {
+                        const entry = await getResp.json();
+                        let duracaoSegundos = null;
+                        if (entry && entry.loginAt) {
+                            duracaoSegundos = Math.floor((new Date(logoutAt) - new Date(entry.loginAt)) / 1000);
+                        }
+                        await fetch(FIREBASE_LOG_URL + '/' + key + '.json', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                logoutAt,
+                                duracaoSegundos,
+                                motivoLogout: 'auto_logout_inatividade_24h'
+                            })
+                        });
+                    }
+                } catch(e) { console.warn('Firebase auto-logout patch falhou:', e); }
+                localStorage.removeItem('med_log_current_key');
+            }
+
+            // Também registrar um evento separado de auto-logout para facilitar auditoria
+            try {
+                await fetch(FIREBASE_LOG_URL + '.json', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        usuario,
+                        tipo: 'AUTO_LOGOUT_INATIVIDADE',
+                        logoutAt,
+                        motivo: 'Sessão encerrada automaticamente após 24h sem atividade',
+                        loginAt: null,
+                        duracaoSegundos: null
+                    })
+                });
+            } catch(e) { console.warn('Firebase auto-logout registro falhou:', e); }
+        }
+
+        /**
+         * Inicia o monitoramento de inatividade:
+         * - Ouve eventos de interação do usuário para atualizar o timestamp
+         * - Verifica a cada 5 minutos se houve inatividade >= 24h
+         */
+        function iniciarMonitoramentoInatividade() {
+            // Atualizar atividade em qualquer interação
+            ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(evento => {
+                document.addEventListener(evento, atualizarAtividade, { passive: true });
+            });
+
+            // Verificar imediatamente ao iniciar (caso sessão já esteja expirada)
+            verificarInatividade();
+
+            // Verificar a cada 5 minutos
+            if (_inactivityTimer) clearInterval(_inactivityTimer);
+            _inactivityTimer = setInterval(verificarInatividade, 5 * 60 * 1000);
+        }
+
+        /**
+         * Para o monitoramento de inatividade (chamado no logout manual).
+         */
+        function pararMonitoramentoInatividade() {
+            if (_inactivityTimer) {
+                clearInterval(_inactivityTimer);
+                _inactivityTimer = null;
+            }
+        }
 
         // ============================================
         // FUNÇÕES DE LOG DE ACESSO — FIREBASE (SOMENTE ADMIN)
@@ -3764,6 +3910,9 @@
             }
 
             [...log].reverse().forEach(entry => {
+                // Pular entradas do tipo AUTO_LOGOUT_INATIVIDADE (são eventos auxiliares, não sessões)
+                if (entry.tipo === 'AUTO_LOGOUT_INATIVIDADE') return;
+
                 const loginFormatado = entry.loginAt
                     ? new Date(entry.loginAt).toLocaleString('pt-BR') : '—';
                 const logoutFormatado = entry.logoutAt
@@ -3777,11 +3926,14 @@
                     duracaoStr = `${formatarDuracaoSegundos(agora)}
                         <span style="color:var(--accent-color); font-size:0.78rem; margin-left:4px;">(em andamento)</span>`;
                 }
+                const motivoBadge = entry.motivoLogout === 'auto_logout_inatividade_24h'
+                    ? `<br><span style="background:#e74c3c;color:white;border-radius:4px;padding:1px 7px;font-size:0.75rem;margin-top:4px;display:inline-block;"><i class="fas fa-clock"></i> Auto-logout 24h</span>`
+                    : '';
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td><i class="fas fa-user" style="color:var(--primary-color); margin-right:6px;"></i><strong>${entry.usuario}</strong></td>
                     <td><i class="fas fa-calendar-check" style="color:var(--accent-color); margin-right:5px;"></i>${loginFormatado}</td>
-                    <td>${logoutFormatado}</td>
+                    <td>${logoutFormatado}${motivoBadge}</td>
                     <td>${duracaoStr}</td>`;
                 tbody.appendChild(row);
             });
