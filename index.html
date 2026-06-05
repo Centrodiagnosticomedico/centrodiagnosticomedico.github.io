@@ -3593,6 +3593,14 @@
         document.getElementById('logoutBtn').addEventListener('click', fazerLogout);
 
         // ============================================
+        // FUNÇÕES DE LOG DE ACESSO — FIREBASE (SOMENTE ADMIN)
+        // ============================================
+
+        // URL do nó de logs no mesmo projeto Firebase já configurado
+        const FIREBASE_BASE_URL = 'https://centrodiagnosticomedico-ccac4-default-rtdb.firebaseio.com';
+        const FIREBASE_LOG_URL  = FIREBASE_BASE_URL + '/med_system_access_log';
+
+        // ============================================
         // AUTO-LOGOUT POR SESSÃO EXPIRADA (24H DESDE O LOGIN)
         // ============================================
         const SESSAO_MAX_MS = 24 * 60 * 60 * 1000; // 24 horas em milissegundos
@@ -3659,14 +3667,6 @@
 
         // Stub — mantido para compatibilidade com chamadas no login/logout manual
         function pararMonitoramentoInatividade() {}
-
-        // ============================================
-        // FUNÇÕES DE LOG DE ACESSO — FIREBASE (SOMENTE ADMIN)
-        // ============================================
-
-        // URL do nó de logs no mesmo projeto Firebase já configurado
-        const FIREBASE_BASE_URL = 'https://centrodiagnosticomedico-ccac4-default-rtdb.firebaseio.com';
-        const FIREBASE_LOG_URL  = FIREBASE_BASE_URL + '/med_system_access_log';
 
         /**
          * Registra login na nuvem via Firebase POST.
