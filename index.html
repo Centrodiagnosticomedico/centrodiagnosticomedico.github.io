@@ -3224,6 +3224,7 @@
                     
                     // Carregar dados do usuário após login
                     carregarDadosDoUsuario(usuario);
+                    iniciarVerificacaoLogoutForcado();
                     
                     return true;
                 }
@@ -3232,8 +3233,9 @@
         }
 
         function fazerLogout() {
-            // Parar monitoramento de inatividade
+            // Parar monitoramento de inatividade e logout forçado
             pararMonitoramentoInatividade();
+            pararVerificacaoLogoutForcado();
             
             // Registrar evento de logout nos logs de acesso (antes de limpar a sessão)
             registrarLogout();   // async, dispara em background sem bloquear o logout
@@ -3381,10 +3383,13 @@
                     <td><span class="role-badge ${user.role === 'administrador' ? 'role-admin' : 'role-user'}">${user.role === 'administrador' ? 'Admin' : 'Usuário'}</span></td>
                     <td>${user.podeAdicionarUsuarios ? '✓' : '✗'}</td>
                     <td>${user.podeEditarCodigo ? '✓' : '✗'}</td>
-                    <td>
+                    <td style="display:flex;gap:6px;align-items:center;">
                         ${key !== 'administrador' ? 
                             `<button class="delete-user-btn" onclick="excluirUsuario('${key}')">
                                 <i class="fas fa-trash"></i>
+                            </button>
+                            <button class="delete-user-btn" title="Forçar logout" style="background:#e67e22;" onclick="forcerLogoutUsuario('${user.usuario}')">
+                                <i class="fas fa-sign-out-alt"></i>
                             </button>` : 
                             '<span style="color: #999;">Protegido</span>'}
                     </td>
@@ -3542,6 +3547,7 @@
             
             document.getElementById('dashboardDoctorName').textContent = 'Dr. ' + sessao.usuario;
             carregarDadosDoUsuario(sessao.usuario);
+            iniciarVerificacaoLogoutForcado();
         }
 
 
@@ -3852,9 +3858,12 @@
                     duracaoStr = `${formatarDuracaoSegundos(agora)}
                         <span style="color:var(--accent-color); font-size:0.78rem; margin-left:4px;">(em andamento)</span>`;
                 }
-                const motivoBadge = entry.motivoLogout === 'auto_logout_inatividade_24h'
-                    ? `<br><span style="background:#e74c3c;color:white;border-radius:4px;padding:1px 7px;font-size:0.75rem;margin-top:4px;display:inline-block;"><i class="fas fa-clock"></i> Sessão expirada 24h</span>`
-                    : '';
+                let motivoBadge = '';
+                if (entry.motivoLogout === 'auto_logout_sessao_expirada_24h' || entry.motivoLogout === 'auto_logout_inatividade_24h') {
+                    motivoBadge = `<br><span style="background:#e74c3c;color:white;border-radius:4px;padding:1px 7px;font-size:0.75rem;margin-top:4px;display:inline-block;"><i class="fas fa-clock"></i> Sessão expirada 24h</span>`;
+                } else if (entry.tipo === 'LOGOUT_FORCADO_ADMIN') {
+                    motivoBadge = `<br><span style="background:#e67e22;color:white;border-radius:4px;padding:1px 7px;font-size:0.75rem;margin-top:4px;display:inline-block;"><i class="fas fa-sign-out-alt"></i> Logout forçado pelo admin</span>`;
+                }
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td><i class="fas fa-user" style="color:var(--primary-color); margin-right:6px;"></i><strong>${entry.usuario}</strong></td>
@@ -3901,6 +3910,108 @@
             // Inicializar sistema apenas uma vez (removido DOMContentLoaded duplicado)
             inicializarSistema();
         };
+
+        // ============================================
+        // FORÇAR LOGOUT DE USUÁRIO (ADMIN)
+        // ============================================
+        const FIREBASE_FORCE_LOGOUT_URL = FIREBASE_BASE_URL + '/med_system_force_logout';
+
+        /**
+         * Admin chama esta função para forçar o logout de um usuário específico.
+         * Salva uma flag no Firebase que o cliente do usuário vai detectar.
+         */
+        async function forcerLogoutUsuario(usuario) {
+            if (!confirm(`Deseja forçar o logout de "${usuario}"?
+
+Ele será deslogado na próxima vez que o sistema verificar (em até 1 minuto).`)) return;
+            try {
+                await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + usuario + '.json', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        forcar: true,
+                        solicitadoEm: new Date().toISOString()
+                    })
+                });
+
+                // Registrar no log de acesso
+                await fetch(FIREBASE_LOG_URL + '.json', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        usuario,
+                        tipo: 'LOGOUT_FORCADO_ADMIN',
+                        logoutAt: new Date().toISOString(),
+                        motivo: 'Logout forçado pelo administrador'
+                    })
+                });
+
+                alert(`✅ Comando de logout enviado para "${usuario}".`);
+            } catch(e) {
+                alert('Erro ao enviar comando de logout: ' + e.message);
+            }
+        }
+
+        /**
+         * Verifica periodicamente se o admin forçou logout deste usuário.
+         * Roda a cada 60 segundos enquanto o usuário estiver logado.
+         */
+        let _forceLogoutTimer = null;
+
+        async function verificarLogoutForcado() {
+            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
+            if (!sessao.usuario) return;
+
+            try {
+                const resp = await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + sessao.usuario + '.json');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (!data || !data.forcar) return;
+
+                // Flag encontrada — limpar flag, deslogar
+                await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + sessao.usuario + '.json', {
+                    method: 'DELETE'
+                });
+
+                salvarDadosDoUsuario(sessao.usuario);
+                localStorage.removeItem('med_system_sessao');
+                localStorage.removeItem('med_log_current_key');
+
+                clearInterval(_forceLogoutTimer);
+
+                document.getElementById('welcomeOverlay').style.display = 'flex';
+                document.getElementById('user-info-bar').style.display = 'none';
+                document.getElementById('mainHeader').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'none';
+                document.getElementById('mainFooter').style.display = 'none';
+                document.getElementById('apiStatus').style.display = 'none';
+                document.getElementById('admin-panel').style.display = 'none';
+                document.getElementById('codigo-editor-container').style.display = 'none';
+                document.getElementById('loginUsuario').value = '';
+                document.getElementById('loginSenha').value = '';
+                document.getElementById('login-error-message').style.display = 'none';
+
+                setTimeout(() => {
+                    alert('🔒 Sua sessão foi encerrada pelo administrador.
+
+Faça login novamente para continuar.');
+                }, 300);
+
+            } catch(e) { /* silencioso */ }
+        }
+
+        function iniciarVerificacaoLogoutForcado() {
+            if (_forceLogoutTimer) clearInterval(_forceLogoutTimer);
+            verificarLogoutForcado(); // checar imediatamente
+            _forceLogoutTimer = setInterval(verificarLogoutForcado, 60 * 1000);
+        }
+
+        function pararVerificacaoLogoutForcado() {
+            if (_forceLogoutTimer) {
+                clearInterval(_forceLogoutTimer);
+                _forceLogoutTimer = null;
+            }
+        }
 
         // ============================================
         // CONFIGURAÇÃO DA API MANUS
