@@ -3224,7 +3224,9 @@
                     
                     // Carregar dados do usuário após login
                     carregarDadosDoUsuario(usuario);
-                    iniciarVerificacaoLogoutForcado();
+                    
+                    // Iniciar monitoramento de inatividade (auto-logout em 24h)
+                    iniciarMonitoramentoInatividade();
                     
                     return true;
                 }
@@ -3233,9 +3235,8 @@
         }
 
         function fazerLogout() {
-            // Parar monitoramento de inatividade e logout forçado
+            // Parar monitoramento de inatividade
             pararMonitoramentoInatividade();
-            pararVerificacaoLogoutForcado();
             
             // Registrar evento de logout nos logs de acesso (antes de limpar a sessão)
             registrarLogout();   // async, dispara em background sem bloquear o logout
@@ -3383,13 +3384,10 @@
                     <td><span class="role-badge ${user.role === 'administrador' ? 'role-admin' : 'role-user'}">${user.role === 'administrador' ? 'Admin' : 'Usuário'}</span></td>
                     <td>${user.podeAdicionarUsuarios ? '✓' : '✗'}</td>
                     <td>${user.podeEditarCodigo ? '✓' : '✗'}</td>
-                    <td style="display:flex;gap:6px;align-items:center;">
+                    <td>
                         ${key !== 'administrador' ? 
                             `<button class="delete-user-btn" onclick="excluirUsuario('${key}')">
                                 <i class="fas fa-trash"></i>
-                            </button>
-                            <button class="delete-user-btn" title="Forçar logout" style="background:#e67e22;" onclick="forcerLogoutUsuario('${user.usuario}')">
-                                <i class="fas fa-sign-out-alt"></i>
                             </button>` : 
                             '<span style="color: #999;">Protegido</span>'}
                     </td>
@@ -3547,7 +3545,9 @@
             
             document.getElementById('dashboardDoctorName').textContent = 'Dr. ' + sessao.usuario;
             carregarDadosDoUsuario(sessao.usuario);
-            iniciarVerificacaoLogoutForcado();
+            
+            // Iniciar monitoramento de inatividade ao restaurar sessão
+            iniciarMonitoramentoInatividade();
         }
 
 
@@ -3593,80 +3593,148 @@
         document.getElementById('logoutBtn').addEventListener('click', fazerLogout);
 
         // ============================================
-        // FUNÇÕES DE LOG DE ACESSO — FIREBASE (SOMENTE ADMIN)
+        // AUTO-LOGOUT POR INATIVIDADE (24 HORAS)
         // ============================================
-
-        // URL do nó de logs no mesmo projeto Firebase já configurado
-        const FIREBASE_BASE_URL = 'https://centrodiagnosticomedico-ccac4-default-rtdb.firebaseio.com';
-        const FIREBASE_LOG_URL  = FIREBASE_BASE_URL + '/med_system_access_log';
-
-        // ============================================
-        // AUTO-LOGOUT POR SESSÃO EXPIRADA (24H DESDE O LOGIN)
-        // ============================================
-        const SESSAO_MAX_MS = 24 * 60 * 60 * 1000; // 24 horas em milissegundos
+        const INATIVIDADE_MAX_MS = 24 * 60 * 60 * 1000; // 24 horas em milissegundos
+        let _inactivityTimer = null;
 
         /**
-         * Verifica se a sessão salva tem mais de 24h desde o login (dataHora).
-         * Chamado no window.onload, ANTES de restaurar a sessão.
-         * Se expirada: limpa localStorage e registra no Firebase.
+         * Atualiza o timestamp de última atividade do usuário no localStorage.
+         * Chamado em qualquer interação do usuário (mouse, teclado, toque).
          */
-        async function verificarExpiracaoSessao() {
+        function atualizarAtividade() {
             const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
-            if (!sessao.usuario || !sessao.dataHora) return;
-
-            const diff = new Date() - new Date(sessao.dataHora);
-            if (diff < SESSAO_MAX_MS) return; // ainda válida
-
-            // Sessão expirada: registrar e limpar
-            await registrarAutoLogout(sessao.usuario, sessao.dataHora);
-            localStorage.removeItem('med_system_sessao');
+            if (sessao.usuario) {
+                sessao.ultimaAtividade = new Date().toISOString();
+                localStorage.setItem('med_system_sessao', JSON.stringify(sessao));
+            }
         }
 
         /**
-         * Registra no Firebase que a sessão foi encerrada automaticamente por expiração de 24h.
+         * Verifica se o usuário ficou inativo por mais de 24h.
+         * Se sim, faz logout automático e registra no Firebase.
          */
-        async function registrarAutoLogout(usuario, loginAt) {
+        function verificarInatividade() {
+            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
+            if (!sessao.usuario) return; // não está logado
+
+            const ultimaAtividade = sessao.ultimaAtividade || sessao.dataHora;
+            if (!ultimaAtividade) return;
+
+            const agora = new Date();
+            const diff = agora - new Date(ultimaAtividade);
+
+            if (diff >= INATIVIDADE_MAX_MS) {
+                // Registrar auto-logout no Firebase antes de limpar sessão
+                registrarAutoLogout(sessao.usuario);
+
+                // Fazer logout silencioso
+                salvarDadosDoUsuario(sessao.usuario);
+                localStorage.removeItem('med_system_sessao');
+
+                document.getElementById('welcomeOverlay').style.display = 'flex';
+                document.getElementById('user-info-bar').style.display = 'none';
+                document.getElementById('mainHeader').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'none';
+                document.getElementById('mainFooter').style.display = 'none';
+                document.getElementById('apiStatus').style.display = 'none';
+                document.getElementById('admin-panel').style.display = 'none';
+                document.getElementById('codigo-editor-container').style.display = 'none';
+                document.getElementById('loginUsuario').value = '';
+                document.getElementById('loginSenha').value = '';
+                document.getElementById('login-error-message').style.display = 'none';
+
+                // Mostrar aviso ao usuário
+                setTimeout(() => {
+                    alert('⏰ Sessão encerrada automaticamente por inatividade (24 horas sem acesso).\n\nFaça login novamente para continuar.');
+                }, 300);
+            }
+        }
+
+        /**
+         * Registra no Firebase que houve um auto-logout por inatividade.
+         */
+        async function registrarAutoLogout(usuario) {
             const key = localStorage.getItem('med_log_current_key');
             const logoutAt = new Date().toISOString();
-            const duracaoSegundos = loginAt
-                ? Math.floor((new Date(logoutAt) - new Date(loginAt)) / 1000)
-                : null;
 
-            // Atualizar o registro de sessão existente no Firebase
+            // Atualizar log de sessão existente com motivo de auto-logout
             if (key) {
                 try {
-                    await fetch(FIREBASE_LOG_URL + '/' + key + '.json', {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            logoutAt,
-                            duracaoSegundos,
-                            motivoLogout: 'auto_logout_sessao_expirada_24h'
-                        })
-                    });
+                    const getResp = await fetch(FIREBASE_LOG_URL + '/' + key + '.json');
+                    if (getResp.ok) {
+                        const entry = await getResp.json();
+                        let duracaoSegundos = null;
+                        if (entry && entry.loginAt) {
+                            duracaoSegundos = Math.floor((new Date(logoutAt) - new Date(entry.loginAt)) / 1000);
+                        }
+                        await fetch(FIREBASE_LOG_URL + '/' + key + '.json', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                logoutAt,
+                                duracaoSegundos,
+                                motivoLogout: 'auto_logout_inatividade_24h'
+                            })
+                        });
+                    }
                 } catch(e) { console.warn('Firebase auto-logout patch falhou:', e); }
                 localStorage.removeItem('med_log_current_key');
             }
 
-            // Registrar evento de auditoria separado
+            // Também registrar um evento separado de auto-logout para facilitar auditoria
             try {
                 await fetch(FIREBASE_LOG_URL + '.json', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         usuario,
-                        tipo: 'AUTO_LOGOUT_SESSAO_EXPIRADA',
-                        loginAt: loginAt || null,
+                        tipo: 'AUTO_LOGOUT_INATIVIDADE',
                         logoutAt,
-                        duracaoSegundos,
-                        motivo: 'Sessão expirada automaticamente após 24h desde o último login'
+                        motivo: 'Sessão encerrada automaticamente após 24h sem atividade',
+                        loginAt: null,
+                        duracaoSegundos: null
                     })
                 });
             } catch(e) { console.warn('Firebase auto-logout registro falhou:', e); }
         }
 
-        // Stub — mantido para compatibilidade com chamadas no login/logout manual
-        function pararMonitoramentoInatividade() {}
+        /**
+         * Inicia o monitoramento de inatividade:
+         * - Ouve eventos de interação do usuário para atualizar o timestamp
+         * - Verifica a cada 5 minutos se houve inatividade >= 24h
+         */
+        function iniciarMonitoramentoInatividade() {
+            // Atualizar atividade em qualquer interação
+            ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(evento => {
+                document.addEventListener(evento, atualizarAtividade, { passive: true });
+            });
+
+            // Verificar imediatamente ao iniciar (caso sessão já esteja expirada)
+            verificarInatividade();
+
+            // Verificar a cada 5 minutos
+            if (_inactivityTimer) clearInterval(_inactivityTimer);
+            _inactivityTimer = setInterval(verificarInatividade, 5 * 60 * 1000);
+        }
+
+        /**
+         * Para o monitoramento de inatividade (chamado no logout manual).
+         */
+        function pararMonitoramentoInatividade() {
+            if (_inactivityTimer) {
+                clearInterval(_inactivityTimer);
+                _inactivityTimer = null;
+            }
+        }
+
+        // ============================================
+        // FUNÇÕES DE LOG DE ACESSO — FIREBASE (SOMENTE ADMIN)
+        // ============================================
+
+        // URL do nó de logs no mesmo projeto Firebase já configurado
+        const FIREBASE_BASE_URL = 'https://centrodiagnosticomedico-ccac4-default-rtdb.firebaseio.com';
+        const FIREBASE_LOG_URL  = FIREBASE_BASE_URL + '/med_system_access_log';
 
         /**
          * Registra login na nuvem via Firebase POST.
@@ -3842,8 +3910,8 @@
             }
 
             [...log].reverse().forEach(entry => {
-                // Pular entradas auxiliares de auto-logout (não são sessões)
-                if (entry.tipo === 'AUTO_LOGOUT_SESSAO_EXPIRADA') return;
+                // Pular entradas do tipo AUTO_LOGOUT_INATIVIDADE (são eventos auxiliares, não sessões)
+                if (entry.tipo === 'AUTO_LOGOUT_INATIVIDADE') return;
 
                 const loginFormatado = entry.loginAt
                     ? new Date(entry.loginAt).toLocaleString('pt-BR') : '—';
@@ -3858,12 +3926,9 @@
                     duracaoStr = `${formatarDuracaoSegundos(agora)}
                         <span style="color:var(--accent-color); font-size:0.78rem; margin-left:4px;">(em andamento)</span>`;
                 }
-                let motivoBadge = '';
-                if (entry.motivoLogout === 'auto_logout_sessao_expirada_24h' || entry.motivoLogout === 'auto_logout_inatividade_24h') {
-                    motivoBadge = `<br><span style="background:#e74c3c;color:white;border-radius:4px;padding:1px 7px;font-size:0.75rem;margin-top:4px;display:inline-block;"><i class="fas fa-clock"></i> Sessão expirada 24h</span>`;
-                } else if (entry.tipo === 'LOGOUT_FORCADO_ADMIN') {
-                    motivoBadge = `<br><span style="background:#e67e22;color:white;border-radius:4px;padding:1px 7px;font-size:0.75rem;margin-top:4px;display:inline-block;"><i class="fas fa-sign-out-alt"></i> Logout forçado pelo admin</span>`;
-                }
+                const motivoBadge = entry.motivoLogout === 'auto_logout_inatividade_24h'
+                    ? `<br><span style="background:#e74c3c;color:white;border-radius:4px;padding:1px 7px;font-size:0.75rem;margin-top:4px;display:inline-block;"><i class="fas fa-clock"></i> Auto-logout 24h</span>`
+                    : '';
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td><i class="fas fa-user" style="color:var(--primary-color); margin-right:6px;"></i><strong>${entry.usuario}</strong></td>
@@ -3898,9 +3963,6 @@
 
             // Pré-carregar usuários da nuvem ao iniciar
             USUARIOS = await carregarUsuarios();
-
-            // Verificar se sessão expirou (24h desde o login) — antes de restaurar
-            await verificarExpiracaoSessao();
             
             if (verificarLogin()) {
                 const sessao = JSON.parse(localStorage.getItem('med_system_sessao'));
@@ -3910,108 +3972,6 @@
             // Inicializar sistema apenas uma vez (removido DOMContentLoaded duplicado)
             inicializarSistema();
         };
-
-        // ============================================
-        // FORÇAR LOGOUT DE USUÁRIO (ADMIN)
-        // ============================================
-        const FIREBASE_FORCE_LOGOUT_URL = FIREBASE_BASE_URL + '/med_system_force_logout';
-
-        /**
-         * Admin chama esta função para forçar o logout de um usuário específico.
-         * Salva uma flag no Firebase que o cliente do usuário vai detectar.
-         */
-        async function forcerLogoutUsuario(usuario) {
-            if (!confirm(`Deseja forçar o logout de "${usuario}"?
-
-Ele será deslogado na próxima vez que o sistema verificar (em até 1 minuto).`)) return;
-            try {
-                await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + usuario + '.json', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        forcar: true,
-                        solicitadoEm: new Date().toISOString()
-                    })
-                });
-
-                // Registrar no log de acesso
-                await fetch(FIREBASE_LOG_URL + '.json', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        usuario,
-                        tipo: 'LOGOUT_FORCADO_ADMIN',
-                        logoutAt: new Date().toISOString(),
-                        motivo: 'Logout forçado pelo administrador'
-                    })
-                });
-
-                alert(`✅ Comando de logout enviado para "${usuario}".`);
-            } catch(e) {
-                alert('Erro ao enviar comando de logout: ' + e.message);
-            }
-        }
-
-        /**
-         * Verifica periodicamente se o admin forçou logout deste usuário.
-         * Roda a cada 60 segundos enquanto o usuário estiver logado.
-         */
-        let _forceLogoutTimer = null;
-
-        async function verificarLogoutForcado() {
-            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
-            if (!sessao.usuario) return;
-
-            try {
-                const resp = await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + sessao.usuario + '.json');
-                if (!resp.ok) return;
-                const data = await resp.json();
-                if (!data || !data.forcar) return;
-
-                // Flag encontrada — limpar flag, deslogar
-                await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + sessao.usuario + '.json', {
-                    method: 'DELETE'
-                });
-
-                salvarDadosDoUsuario(sessao.usuario);
-                localStorage.removeItem('med_system_sessao');
-                localStorage.removeItem('med_log_current_key');
-
-                clearInterval(_forceLogoutTimer);
-
-                document.getElementById('welcomeOverlay').style.display = 'flex';
-                document.getElementById('user-info-bar').style.display = 'none';
-                document.getElementById('mainHeader').style.display = 'none';
-                document.getElementById('mainContent').style.display = 'none';
-                document.getElementById('mainFooter').style.display = 'none';
-                document.getElementById('apiStatus').style.display = 'none';
-                document.getElementById('admin-panel').style.display = 'none';
-                document.getElementById('codigo-editor-container').style.display = 'none';
-                document.getElementById('loginUsuario').value = '';
-                document.getElementById('loginSenha').value = '';
-                document.getElementById('login-error-message').style.display = 'none';
-
-                setTimeout(() => {
-                    alert('🔒 Sua sessão foi encerrada pelo administrador.
-
-Faça login novamente para continuar.');
-                }, 300);
-
-            } catch(e) { /* silencioso */ }
-        }
-
-        function iniciarVerificacaoLogoutForcado() {
-            if (_forceLogoutTimer) clearInterval(_forceLogoutTimer);
-            verificarLogoutForcado(); // checar imediatamente
-            _forceLogoutTimer = setInterval(verificarLogoutForcado, 60 * 1000);
-        }
-
-        function pararVerificacaoLogoutForcado() {
-            if (_forceLogoutTimer) {
-                clearInterval(_forceLogoutTimer);
-                _forceLogoutTimer = null;
-            }
-        }
 
         // ============================================
         // CONFIGURAÇÃO DA API MANUS
