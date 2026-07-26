@@ -4773,7 +4773,14 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
         // ============================================
         function imprimirPrescricao() {
             const tratamentoTexto = document.getElementById('tratamento').value;
-            const pacienteNome = document.getElementById('consult-patient-name').textContent;
+            const nomeEl = document.getElementById('consult-patient-name');
+            const pacienteNome = nomeEl.textContent;
+            const pacienteIdAttr = nomeEl.getAttribute('data-paciente-id');
+            const paciente = pacienteIdAttr
+                ? pacientes.find(p => p.id === parseInt(pacienteIdAttr))
+                : pacientes.find(p => p.nome === pacienteNome.trim());
+            const pacienteIdade = paciente ? calcularIdade(paciente.dataNascimento) : null;
+            const pacienteSexo = paciente ? (paciente.sexo || 'Não informado') : null;
             if (!tratamentoTexto || tratamentoTexto.trim() === '') {
                 alert('Não há plano de tratamento para imprimir.');
                 return;
@@ -4788,6 +4795,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 ? secaoMatch[1].trim().split('\n').filter(l => l.trim().match(/^\d+[.)]/) )
                 : tratamentoTexto.split('\n').filter(l => l.trim().match(/^\d+[.)]/) );
 
+            let totalComprimidosTratamento = 0;
             const blocosHtml = linhasMeds.map(function(linha) {
                 const texto = linha.replace(/^\d+[.)]\s*/, '').trim();
                 const partes = texto.split(/\s+-\s+/);
@@ -4808,7 +4816,10 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     else if (matchVez) tomadas = parseInt(matchVez[1]);
                     const qtdPorTomada = matchQtd ? parseInt(matchQtd[1]) : 1;
                     const total = dias * tomadas * qtdPorTomada;
-                    if (total > 0) quantidade = 'Dispensar: ' + total + ' unidade' + (total > 1 ? 's' : '');
+                    if (total > 0) {
+                        quantidade = 'Dispensar: ' + total + ' unidade' + (total > 1 ? 's' : '');
+                        totalComprimidosTratamento += total;
+                    }
                 }
 
                 const viaMatch = posologia.match(/\b(via oral|VO|IM|IV|subcutâneo|SC|tópico|inalatório|inalatorio|sublingual|retal|nasal)\b/i);
@@ -4835,19 +4846,26 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                         
                     + '</div>'
                 + '</div>'
-                + '<hr style="border:none; border-top:2px solid #2c5aa0; margin-bottom:18px;">'
-                + '<div style="display:flex; justify-content:space-between; margin-bottom:24px; font-size:14px;">'
+                + '<hr style="border:none; border-top:2px solid #2c5aa0; margin-bottom:12px;">'
+                + '<div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:14px;">'
                     + '<p style="margin:0;"><strong>Paciente:</strong> ' + pacienteNome + '</p>'
                     + '<p style="margin:0;"><strong>Data:</strong> ' + dataFormatada + '</p>'
+                + '</div>'
+                + '<div style="display:flex; justify-content:space-between; margin-bottom:24px; font-size:13px; color:#444;">'
+                    + '<p style="margin:0;"><strong>Idade:</strong> ' + (pacienteIdade !== null ? pacienteIdade + ' anos' : 'Não informada') + '</p>'
+                    + '<p style="margin:0;"><strong>Sexo:</strong> ' + (pacienteSexo || 'Não informado') + '</p>'
                 + '</div>'
                 + '<div style="min-height:280px;">'
                     + (blocosHtml || '<p style="font-size:14px; color:#555;">' + tratamentoTexto.replace(/\n/g,'<br>') + '</p>')
                 + '</div>'
+                + (totalComprimidosTratamento > 0
+                    ? '<p style="font-size:14px; font-weight:700; color:#1a1a2e; margin-top:10px; padding-top:14px; border-top:2px solid #2c5aa0;">Total de comprimidos/unidades para o tratamento completo: ' + totalComprimidosTratamento + '</p>'
+                    : '')
                 + '<div style="margin-top:50px; text-align:right;">'
                     + '<div style="display:inline-block; text-align:center; min-width:240px;">'
                         + '<hr style="border:none; border-top:1px solid #333; margin-bottom:8px;">'
                         + '<p style="font-size:15px; font-weight:700; margin:0;">' + currentDoctorName + '</p>'
-                        
+
                         + '<p style="font-size:12px; color:#666; margin:0;">' + dataFormatada + '</p>'
                     + '</div>'
                 + '</div>';
@@ -4868,6 +4886,8 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             if (!consulta) return;
             const paciente = pacientes.find(p => p.id === consulta.pacienteId);
             const pacienteNome = paciente ? paciente.nome : 'Não informado';
+            const pacienteIdade = paciente ? calcularIdade(paciente.dataNascimento) : null;
+            const pacienteSexo = paciente ? (paciente.sexo || 'Não informado') : null;
 
             // Usar a data da consulta (não a data atual)
             const dataConsulta = consulta.data
@@ -4884,6 +4904,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 ? tratamentoTexto.split('\n').filter(l => l.trim().match(/^\d+[.)]/)).map(l => l)
                 : [];
 
+            let totalComprimidosTratamento = 0;
             const blocosHtml = linhasMeds.map(function(linha) {
                 const texto = linha.replace(/^\d+[.)]\s*/, '').trim();
                 const partes2 = texto.split(/\s+-\s+/);
@@ -4903,7 +4924,10 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     else if (mVez) tomadas = parseInt(mVez[1]);
                     const qtd = mQtd ? parseInt(mQtd[1]) : 1;
                     const total = dias * tomadas * qtd;
-                    if (total > 0) quantidade = 'Dispensar: ' + total + ' unidade' + (total > 1 ? 's' : '');
+                    if (total > 0) {
+                        quantidade = 'Dispensar: ' + total + ' unidade' + (total > 1 ? 's' : '');
+                        totalComprimidosTratamento += total;
+                    }
                 }
                 const viaMatch = posologia.match(/\b(via oral|VO|IM|IV|subcutâneo|SC|tópico|inalatório|inalatorio|sublingual|retal|nasal)\b/i);
                 const via = viaMatch ? viaMatch[1] : '';
@@ -4930,14 +4954,21 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                         + '<p style="margin:0;"><strong>' + medicoNome + '</strong></p>'
                     + '</div>'
                 + '</div>'
-                + '<hr style="border:none; border-top:2px solid #2c5aa0; margin-bottom:18px;">'
-                + '<div style="display:flex; justify-content:space-between; margin-bottom:24px; font-size:14px;">'
+                + '<hr style="border:none; border-top:2px solid #2c5aa0; margin-bottom:12px;">'
+                + '<div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:14px;">'
                     + '<p style="margin:0;"><strong>Paciente:</strong> ' + pacienteNome + '</p>'
                     + '<p style="margin:0;"><strong>Data:</strong> ' + dataFormatada + '</p>'
+                + '</div>'
+                + '<div style="display:flex; justify-content:space-between; margin-bottom:24px; font-size:13px; color:#444;">'
+                    + '<p style="margin:0;"><strong>Idade:</strong> ' + (pacienteIdade !== null ? pacienteIdade + ' anos' : 'Não informada') + '</p>'
+                    + '<p style="margin:0;"><strong>Sexo:</strong> ' + (pacienteSexo || 'Não informado') + '</p>'
                 + '</div>'
                 + '<div style="min-height:280px;">'
                     + (blocosHtml || '<p style="font-size:14px; color:#555;">' + tratamentoTexto.replace(/\n/g,'<br>') + '</p>')
                 + '</div>'
+                + (totalComprimidosTratamento > 0
+                    ? '<p style="font-size:14px; font-weight:700; color:#1a1a2e; margin-top:10px; padding-top:14px; border-top:2px solid #2c5aa0;">Total de comprimidos/unidades para o tratamento completo: ' + totalComprimidosTratamento + '</p>'
+                    : '')
                 + '<div style="margin-top:50px; text-align:right;">'
                     + '<div style="display:inline-block; text-align:center; min-width:240px;">'
                         + '<hr style="border:none; border-top:1px solid #333; margin-bottom:8px;">'
