@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Centro de Diagnóstico Médico - Sistema Inteligente com IA Real</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Firebase Authentication (login real, protegido por token) -->
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
     <style>
         :root {
             --primary-color: #2c5aa0;
@@ -2110,44 +2113,6 @@
             background: #c0392b;
         }
 
-        #codigo-editor-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: white;
-            z-index: 10000;
-            overflow: auto;
-            padding: 30px;
-        }
-
-        .codigo-editor {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .codigo-editor h3 {
-            color: var(--primary-color);
-            margin-bottom: 20px;
-        }
-
-        #codigo-editado {
-            width: 100%;
-            min-height: 70vh;
-            padding: 20px;
-            border: 2px solid var(--light-gray);
-            border-radius: var(--border-radius);
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            line-height: 1.5;
-            margin-bottom: 20px;
-        }
-
-        .editor-actions {
-            display: flex;
-            gap: 15px;
-        }
     </style>
 </head>
 <body>
@@ -2205,8 +2170,46 @@
                     <span><i class="fas fa-clock"></i> <span id="loggedTime"></span></span>
                     <span><i class="fas fa-globe"></i> <span id="loggedBrowser"></span></span>
                 </div>
+                <button id="trocarSenhaBtn" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 20px; border-radius: 30px; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; margin-right: 10px;">
+                    <i class="fas fa-key"></i> Trocar Senha
+                </button>
                 <button id="logoutBtn">
                     <i class="fas fa-sign-out-alt"></i> Sair
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: TROCAR SENHA -->
+    <div id="trocarSenhaOverlay" class="welcome-overlay" style="display: none;">
+        <div class="welcome-card" style="max-width: 450px;">
+            <div class="medical-symbol" style="width: 80px; height: 80px;">
+                <i class="fas fa-key" style="font-size: 40px;"></i>
+            </div>
+            <h1 style="font-size: 1.6rem;">Trocar Senha</h1>
+            <p style="font-size: 1rem; margin-bottom: 20px;">Escolha uma nova senha de acesso</p>
+
+            <div class="form-group" style="text-align: left;">
+                <label for="senha-atual">Senha Atual</label>
+                <input type="password" id="senha-atual" placeholder="Digite sua senha atual">
+            </div>
+            <div class="form-group" style="text-align: left;">
+                <label for="nova-senha">Nova Senha</label>
+                <input type="password" id="nova-senha" placeholder="Mínimo 6 caracteres">
+            </div>
+            <div class="form-group" style="text-align: left;">
+                <label for="confirmar-nova-senha">Confirmar Nova Senha</label>
+                <input type="password" id="confirmar-nova-senha" placeholder="Repita a nova senha">
+            </div>
+
+            <div id="trocar-senha-erro" style="display:none; color: var(--danger-color); margin-bottom: 15px; font-size: 0.95rem;"></div>
+
+            <div style="display: flex; gap: 15px;">
+                <button class="btn btn-accent" id="confirmarTrocarSenhaBtn" style="flex:1;">
+                    <i class="fas fa-save"></i> Salvar
+                </button>
+                <button class="btn btn-danger" id="cancelarTrocarSenhaBtn" style="flex:1;">
+                    <i class="fas fa-times"></i> Cancelar
                 </button>
             </div>
         </div>
@@ -2227,9 +2230,6 @@
                     <button class="admin-btn admin-btn-info" onclick="toggleLogsAcesso()">
                         <i class="fas fa-chart-line"></i> Logs de Acesso
                     </button>
-                    <button class="admin-btn admin-btn-warning" onclick="ativarEdicaoCodigo()">
-                        <i class="fas fa-code"></i> Editar Código
-                    </button>
                 </div>
             </div>
 
@@ -2247,9 +2247,6 @@
                 <div class="admin-form-row">
                     <label class="admin-checkbox">
                         <input type="checkbox" id="newCanAddUsers"> Pode adicionar usuários
-                    </label>
-                    <label class="admin-checkbox">
-                        <input type="checkbox" id="newCanEditCode"> Pode editar código
                     </label>
                 </div>
                 <div style="display: flex; gap: 10px;">
@@ -2271,7 +2268,6 @@
                             <th>Usuário</th>
                             <th>Perfil</th>
                             <th>Pode Adicionar</th>
-                            <th>Pode Editar Código</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -2312,21 +2308,6 @@
         </div>
     </div>
 
-    <!-- CÓDIGO EDITOR -->
-    <div id="codigo-editor-container" style="display: none;">
-        <div class="codigo-editor">
-            <h3><i class="fas fa-code"></i> Editor de Código (Modo Administrador)</h3>
-            <textarea id="codigo-editado" rows="30"></textarea>
-            <div class="editor-actions">
-                <button class="btn btn-accent" onclick="salvarCodigo()">
-                    <i class="fas fa-save"></i> Salvar Código
-                </button>
-                <button class="btn btn-danger" onclick="cancelarEdicaoCodigo()">
-                    <i class="fas fa-times"></i> Cancelar
-                </button>
-            </div>
-        </div>
-    </div>
 
     <!-- Header -->
     <header id="mainHeader" style="display: none;">
@@ -2389,6 +2370,25 @@
                             <i class="fas fa-eye"></i> Ver Histórico
                         </button>
                     </div>
+                </div>
+            </div>
+
+            <!-- Backup: Exportar/Importar dados de pacientes e consultas -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="fas fa-database"></i> Backup dos Meus Dados</h3>
+                </div>
+                <p style="color: var(--gray-color); margin-bottom: 15px;">
+                    Os pacientes e consultas ficam salvos só neste navegador/computador. Exporte um arquivo de backup de vez em quando e guarde em local seguro — assim dá pra levar seus dados pra outro computador ou navegador, ou recuperar se limpar o cache por engano.
+                </p>
+                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" id="btn-exportar-backup">
+                        <i class="fas fa-download"></i> Exportar Backup
+                    </button>
+                    <button class="btn btn-accent" id="btn-importar-backup">
+                        <i class="fas fa-upload"></i> Importar Backup
+                    </button>
+                    <input type="file" id="input-importar-backup" accept="application/json,.json" style="display:none;">
                 </div>
             </div>
 
@@ -3102,33 +3102,93 @@
 
     <script>
         // ============================================
-        // BANCO DE DADOS DE USUÁRIOS - FIREBASE REALTIME DATABASE
-        // Os usuários ficam salvos na nuvem e são acessíveis de qualquer computador.
-        // Os dados de pacientes continuam salvos localmente por usuário.
+        // FIREBASE — BANCO DE DADOS + AUTENTICAÇÃO REAL
+        // Os usuários ficam salvos na nuvem (Realtime Database) e agora o
+        // acesso a esse banco exige login de verdade (Firebase Authentication),
+        // pra impedir que qualquer pessoa na internet leia/escreva os dados
+        // direto pela URL do banco (sem passar pela tela de login do site).
         // ============================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDBaHYKXIZ5XKNzkNpmcBNOln1e8ZGTomI",
+            authDomain: "centrodiagnosticomedico-ccac4.firebaseapp.com",
+            databaseURL: "https://centrodiagnosticomedico-ccac4-default-rtdb.firebaseio.com",
+            projectId: "centrodiagnosticomedico-ccac4",
+            storageBucket: "centrodiagnosticomedico-ccac4.firebasestorage.app",
+            messagingSenderId: "58842070469",
+            appId: "1:58842070469:web:a96890be4eb1e9a244dfac"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const firebaseAuth = firebase.auth();
 
-        // ⚠️ CONFIGURE AQUI O SEU PROJETO FIREBASE:
-        // 1. Acesse https://console.firebase.google.com/
-        // 2. Crie um projeto → Realtime Database → Criar banco de dados
-        // 3. Nas Regras, coloque: { "rules": { ".read": true, ".write": true } }
-        // 4. Copie a URL do banco (ex: https://SEU-PROJETO-default-rtdb.firebaseio.com)
-        // 5. Substitua o valor abaixo pela sua URL:
+        // Autenticação anônima: não identifica QUEM é a pessoa (quem faz esse
+        // controle continua sendo o nosso próprio login de usuário/senha) — serve
+        // só pra provar, pras Regras do Firebase, que quem está chamando é
+        // realmente o site rodando num navegador, e não um robô/scanner batendo
+        // direto na URL do banco de dados. Não exige senha de ninguém.
+        let authAnonimoPromise = null;
+        function garantirAuthAnonimo() {
+            if (firebaseAuth.currentUser) return Promise.resolve(firebaseAuth.currentUser);
+            if (!authAnonimoPromise) {
+                authAnonimoPromise = firebaseAuth.signInAnonymously()
+                    .then(cred => cred.user)
+                    .catch(e => {
+                        console.error('Falha na autenticação anônima do Firebase:', e);
+                        authAnonimoPromise = null;
+                        throw e;
+                    });
+            }
+            return authAnonimoPromise;
+        }
+
+        // Retorna o token de autenticação atual (o SDK do Firebase renova
+        // sozinho por trás dos panos quando necessário).
+        async function obterAuthToken() {
+            await garantirAuthAnonimo();
+            if (!firebaseAuth.currentUser) return null;
+            return firebaseAuth.currentUser.getIdToken();
+        }
+
+        // Anexa "?auth=TOKEN" numa URL do Realtime Database, se houver token disponível.
+        async function comAuthNaUrl(url) {
+            const token = await obterAuthToken();
+            if (!token) return url;
+            const separador = url.includes('?') ? '&' : '?';
+            return `${url}${separador}auth=${token}`;
+        }
+
+        // ============================================
+        // BANCO DE DADOS DE USUÁRIOS - FIREBASE REALTIME DATABASE
+        // ============================================
         const FIREBASE_RTDB_URL = 'https://centrodiagnosticomedico-ccac4-default-rtdb.firebaseio.com/med_system_usuarios.json';
+
+        // Converte uma senha em texto para um hash SHA-256 (hexadecimal).
+        // Nunca guardamos senha em texto puro no Firebase/localStorage a partir de agora.
+        async function sha256Hex(texto) {
+            const dados = new TextEncoder().encode(texto);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', dados);
+            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // Um hash SHA-256 sempre tem 64 caracteres hexadecimais.
+        // Usamos isso pra saber se uma senha salva já está no formato novo (hash) ou é texto puro antigo.
+        function pareceHashSha256(valor) {
+            return typeof valor === 'string' && /^[0-9a-f]{64}$/.test(valor);
+        }
 
         const USUARIOS_PADRAO = {
             administrador: {
                 usuario: 'administrador',
-                senha: '2',
+                // Senha padrão inicial: krSv3izUqs5RGZeY (troque assim que possível — ver painel do admin)
+                senha: '15cd9992858bca3b7bc6f3ddff141a1a247317f3381048e965a462d7e0387ef5',
                 role: 'administrador',
-                podeAdicionarUsuarios: true,
-                podeEditarCodigo: true
+                podeAdicionarUsuarios: true
             }
         };
 
         // Carrega usuários do Firebase (nuvem)
         async function carregarUsuarios() {
             try {
-                const response = await fetch(FIREBASE_RTDB_URL);
+                const response = await fetch(await comAuthNaUrl(FIREBASE_RTDB_URL));
                 if (!response.ok) throw new Error('Falha na requisição Firebase');
                 const data = await response.json();
                 if (data && typeof data === 'object' && Object.keys(data).length > 0) {
@@ -3150,7 +3210,7 @@
         // Salva usuários no Firebase (nuvem)
         async function salvarUsuarios(usuarios) {
             try {
-                const response = await fetch(FIREBASE_RTDB_URL, {
+                const response = await fetch(await comAuthNaUrl(FIREBASE_RTDB_URL), {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(usuarios)
@@ -3179,14 +3239,25 @@
         async function fazerLogin(usuario, senha) {
             // Recarregar usuários do Firebase para garantir dados atualizados
             USUARIOS = await carregarUsuarios();
-            
+            const senhaHash = await sha256Hex(senha);
+
             for (let key in USUARIOS) {
-                if (USUARIOS[key].usuario === usuario && USUARIOS[key].senha === senha) {
+                const senhaSalva = USUARIOS[key].senha;
+                const senhaCorreta = pareceHashSha256(senhaSalva)
+                    ? senhaSalva === senhaHash
+                    : senhaSalva === senha; // formato antigo (texto puro), só por compatibilidade
+
+                if (USUARIOS[key].usuario === usuario && senhaCorreta) {
+                    // Migração silenciosa: se a senha ainda estava em texto puro, salva o hash agora
+                    if (!pareceHashSha256(senhaSalva)) {
+                        USUARIOS[key].senha = senhaHash;
+                        await salvarUsuarios(USUARIOS);
+                    }
+
                     const sessao = {
                         usuario: usuario,
                         role: USUARIOS[key].role,
                         podeAdicionarUsuarios: USUARIOS[key].podeAdicionarUsuarios,
-                        podeEditarCodigo: USUARIOS[key].podeEditarCodigo,
                         token: Math.random().toString(36).substring(2) + Date.now().toString(36),
                         dataHora: new Date().toISOString(),
                         ultimaAtividade: new Date().toISOString()
@@ -3257,11 +3328,87 @@
             document.getElementById('mainFooter').style.display = 'none';
             document.getElementById('apiStatus').style.display = 'none';
             document.getElementById('admin-panel').style.display = 'none';
-            document.getElementById('codigo-editor-container').style.display = 'none';
-            
+
             document.getElementById('loginUsuario').value = '';
             document.getElementById('loginSenha').value = '';
             document.getElementById('login-error-message').style.display = 'none';
+        }
+
+        // ============================================
+        // TROCAR A PRÓPRIA SENHA (qualquer usuário logado)
+        // ============================================
+
+        function abrirTrocarSenha() {
+            document.getElementById('senha-atual').value = '';
+            document.getElementById('nova-senha').value = '';
+            document.getElementById('confirmar-nova-senha').value = '';
+            document.getElementById('trocar-senha-erro').style.display = 'none';
+            document.getElementById('trocarSenhaOverlay').style.display = 'flex';
+        }
+
+        function fecharTrocarSenha() {
+            document.getElementById('trocarSenhaOverlay').style.display = 'none';
+        }
+
+        function mostrarErroTrocarSenha(mensagem) {
+            const erroEl = document.getElementById('trocar-senha-erro');
+            erroEl.textContent = mensagem;
+            erroEl.style.display = 'block';
+        }
+
+        async function trocarMinhaSenha() {
+            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
+            if (!sessao.usuario) {
+                mostrarErroTrocarSenha('Sessão inválida. Faça login novamente.');
+                return;
+            }
+
+            const senhaAtual = document.getElementById('senha-atual').value;
+            const novaSenha = document.getElementById('nova-senha').value;
+            const confirmarSenha = document.getElementById('confirmar-nova-senha').value;
+
+            if (!senhaAtual || !novaSenha || !confirmarSenha) {
+                mostrarErroTrocarSenha('Preencha todos os campos.');
+                return;
+            }
+            if (novaSenha.length < 6) {
+                mostrarErroTrocarSenha('A nova senha deve ter pelo menos 6 caracteres.');
+                return;
+            }
+            if (novaSenha !== confirmarSenha) {
+                mostrarErroTrocarSenha('A nova senha e a confirmação não são iguais.');
+                return;
+            }
+
+            USUARIOS = await carregarUsuarios();
+            let chaveEncontrada = null;
+            for (let key in USUARIOS) {
+                if (USUARIOS[key].usuario === sessao.usuario) {
+                    chaveEncontrada = key;
+                    break;
+                }
+            }
+            if (!chaveEncontrada) {
+                mostrarErroTrocarSenha('Não foi possível localizar seu usuário. Faça login novamente.');
+                return;
+            }
+
+            const senhaSalva = USUARIOS[chaveEncontrada].senha;
+            const senhaAtualHash = await sha256Hex(senhaAtual);
+            const senhaAtualCorreta = pareceHashSha256(senhaSalva)
+                ? senhaSalva === senhaAtualHash
+                : senhaSalva === senhaAtual; // formato antigo (texto puro), só por compatibilidade
+
+            if (!senhaAtualCorreta) {
+                mostrarErroTrocarSenha('Senha atual incorreta.');
+                return;
+            }
+
+            USUARIOS[chaveEncontrada].senha = await sha256Hex(novaSenha);
+            await salvarUsuarios(USUARIOS);
+
+            alert('Senha alterada com sucesso!');
+            fecharTrocarSenha();
         }
 
         // ============================================
@@ -3347,6 +3494,103 @@
         }
 
         // ============================================
+        // BACKUP: EXPORTAR / IMPORTAR PACIENTES E CONSULTAS
+        // ============================================
+
+        function atualizarInterfaceAposImportar() {
+            document.getElementById('dashboardDoctorName').textContent = currentDoctorName;
+            if (typeof carregarPacientes === 'function') carregarPacientes();
+            if (typeof carregarHistoricoComFiltro === 'function') {
+                carregarHistoricoComFiltro(document.getElementById('filter-option')?.value || 'recentes');
+            }
+            if (typeof carregarConsultasRecentes === 'function') carregarConsultasRecentes();
+            if (typeof atualizarEstatisticas === 'function') atualizarEstatisticas();
+        }
+
+        function exportarBackup() {
+            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
+            if (!sessao.usuario) {
+                alert('Você precisa estar logado para exportar um backup.');
+                return;
+            }
+
+            const backup = {
+                tipo: 'backup_med_sistema',
+                versao: 1,
+                usuario: sessao.usuario,
+                medico: currentDoctorName,
+                exportadoEm: new Date().toISOString(),
+                pacientes: pacientes,
+                consultas: consultas
+            };
+
+            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const dataArquivo = new Date().toISOString().slice(0, 10);
+            a.href = url;
+            a.download = `backup_med_${sessao.usuario}_${dataArquivo}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importarBackup(event) {
+            const arquivo = event.target.files[0];
+            if (!arquivo) return;
+
+            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
+            if (!sessao.usuario) {
+                alert('Você precisa estar logado para importar um backup.');
+                event.target.value = '';
+                return;
+            }
+
+            const leitor = new FileReader();
+            leitor.onload = function(e) {
+                let dados;
+                try {
+                    dados = JSON.parse(e.target.result);
+                } catch (err) {
+                    alert('Arquivo inválido: não é um JSON válido.');
+                    event.target.value = '';
+                    return;
+                }
+
+                if (!dados || !Array.isArray(dados.pacientes) || !Array.isArray(dados.consultas)) {
+                    alert('Arquivo inválido: não parece ser um backup deste sistema.');
+                    event.target.value = '';
+                    return;
+                }
+
+                const mensagem = (pacientes.length > 0 || consultas.length > 0)
+                    ? `Este backup tem ${dados.pacientes.length} paciente(s) e ${dados.consultas.length} consulta(s).\n\nISSO VAI SUBSTITUIR os dados atuais deste usuário (${pacientes.length} paciente(s) e ${consultas.length} consulta(s) salvos agora). Deseja continuar?`
+                    : `Importar ${dados.pacientes.length} paciente(s) e ${dados.consultas.length} consulta(s) deste backup?`;
+
+                if (!confirm(mensagem)) {
+                    event.target.value = '';
+                    return;
+                }
+
+                pacientes = dados.pacientes;
+                consultas = dados.consultas;
+                if (dados.medico) currentDoctorName = dados.medico;
+
+                salvarDadosDoUsuario(sessao.usuario);
+                atualizarInterfaceAposImportar();
+
+                alert('Backup importado com sucesso!');
+                event.target.value = '';
+            };
+            leitor.onerror = function() {
+                alert('Erro ao ler o arquivo.');
+                event.target.value = '';
+            };
+            leitor.readAsText(arquivo);
+        }
+
+        // ============================================
         // FUNÇÕES DE ADMINISTRADOR
         // ============================================
 
@@ -3385,7 +3629,6 @@
                     <td>${user.usuario}</td>
                     <td><span class="role-badge ${user.role === 'administrador' ? 'role-admin' : 'role-user'}">${user.role === 'administrador' ? 'Admin' : 'Usuário'}</span></td>
                     <td>${user.podeAdicionarUsuarios ? '✓' : '✗'}</td>
-                    <td>${user.podeEditarCodigo ? '✓' : '✗'}</td>
                     <td style="display:flex;gap:6px;align-items:center;">
                         ${key !== 'administrador' ? 
                             `<button class="delete-user-btn" onclick="excluirUsuario('${key}')">
@@ -3406,7 +3649,6 @@
             const senha = document.getElementById('newPassword').value;
             const role = document.getElementById('newRole').value;
             const podeAdicionar = document.getElementById('newCanAddUsers').checked;
-            const podeEditar = document.getElementById('newCanEditCode').checked;
 
             if (!usuario || !senha) {
                 alert('Preencha todos os campos obrigatórios!');
@@ -3424,10 +3666,9 @@
             const novoKey = 'user_' + Date.now();
             USUARIOS[novoKey] = {
                 usuario: usuario,
-                senha: senha,
+                senha: await sha256Hex(senha),
                 role: role,
-                podeAdicionarUsuarios: podeAdicionar,
-                podeEditarCodigo: podeEditar
+                podeAdicionarUsuarios: podeAdicionar
             };
 
             // Salvar no Firebase
@@ -3462,49 +3703,6 @@
                 }
                 
                 atualizarListaUsuarios();
-            }
-        }
-
-        // ============================================
-        // FUNÇÕES DE EDIÇÃO DE CÓDIGO
-        // ============================================
-
-        function ativarEdicaoCodigo() {
-            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
-            if (sessao.role !== 'administrador' || !sessao.podeEditarCodigo) {
-                alert('Acesso negado! Você não tem permissão para editar código.');
-                return;
-            }
-
-            document.getElementById('codigo-editado').value = document.documentElement.outerHTML;
-            document.getElementById('codigo-editor-container').style.display = 'block';
-            document.getElementById('mainHeader').style.display = 'none';
-            document.getElementById('mainContent').style.display = 'none';
-            document.getElementById('mainFooter').style.display = 'none';
-            document.getElementById('admin-panel').style.display = 'none';
-            document.getElementById('user-info-bar').style.display = 'none';
-            document.getElementById('apiStatus').style.display = 'none';
-        }
-
-        function salvarCodigo() {
-            if (confirm('ATENÇÃO! Isso substituirá todo o código atual. Deseja continuar?')) {
-                localStorage.setItem('med_codigo_salvo', document.getElementById('codigo-editado').value);
-                alert('Código salvo! A página será recarregada.');
-                location.reload();
-            }
-        }
-
-        function cancelarEdicaoCodigo() {
-            document.getElementById('codigo-editor-container').style.display = 'none';
-            document.getElementById('mainHeader').style.display = 'block';
-            document.getElementById('mainContent').style.display = 'block';
-            document.getElementById('mainFooter').style.display = 'block';
-            document.getElementById('user-info-bar').style.display = 'block';
-            
-            const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
-            document.getElementById('apiStatus').style.display = sessao.role === 'administrador' ? 'flex' : 'none';
-            if (sessao.role === 'administrador') {
-                document.getElementById('admin-panel').style.display = 'block';
             }
         }
 
@@ -3644,7 +3842,6 @@
                 document.getElementById('mainFooter').style.display = 'none';
                 document.getElementById('apiStatus').style.display = 'none';
                 document.getElementById('admin-panel').style.display = 'none';
-                document.getElementById('codigo-editor-container').style.display = 'none';
                 document.getElementById('loginUsuario').value = '';
                 document.getElementById('loginSenha').value = '';
                 document.getElementById('login-error-message').style.display = 'none';
@@ -3666,14 +3863,14 @@
             // Atualizar log de sessão existente com motivo de auto-logout
             if (key) {
                 try {
-                    const getResp = await fetch(FIREBASE_LOG_URL + '/' + key + '.json');
+                    const getResp = await fetch(await comAuthNaUrl(FIREBASE_LOG_URL + '/' + key + '.json'));
                     if (getResp.ok) {
                         const entry = await getResp.json();
                         let duracaoSegundos = null;
                         if (entry && entry.loginAt) {
                             duracaoSegundos = Math.floor((new Date(logoutAt) - new Date(entry.loginAt)) / 1000);
                         }
-                        await fetch(FIREBASE_LOG_URL + '/' + key + '.json', {
+                        await fetch(await comAuthNaUrl(FIREBASE_LOG_URL + '/' + key + '.json'), {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -3689,7 +3886,7 @@
 
             // Também registrar um evento separado de auto-logout para facilitar auditoria
             try {
-                await fetch(FIREBASE_LOG_URL + '.json', {
+                await fetch(await comAuthNaUrl(FIREBASE_LOG_URL + '.json'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -3747,7 +3944,7 @@
         async function forcerLogoutUsuario(usuario) {
             if (!confirm('Deseja forçar o logout de "' + usuario + '"?\n\nEle será deslogado em até 1 minuto.')) return;
             try {
-                await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + usuario + '.json', {
+                await fetch(await comAuthNaUrl(FIREBASE_FORCE_LOGOUT_URL + '/' + usuario + '.json'), {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ forcar: true, solicitadoEm: new Date().toISOString() })
@@ -3764,12 +3961,12 @@
             const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
             if (!sessao.usuario) return;
             try {
-                const resp = await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + sessao.usuario + '.json');
+                const resp = await fetch(await comAuthNaUrl(FIREBASE_FORCE_LOGOUT_URL + '/' + sessao.usuario + '.json'));
                 if (!resp.ok) return;
                 const data = await resp.json();
                 if (!data || !data.forcar) return;
                 // Limpar flag e deslogar
-                await fetch(FIREBASE_FORCE_LOGOUT_URL + '/' + sessao.usuario + '.json', { method: 'DELETE' });
+                await fetch(await comAuthNaUrl(FIREBASE_FORCE_LOGOUT_URL + '/' + sessao.usuario + '.json'), { method: 'DELETE' });
                 fazerLogout();
                 setTimeout(() => alert('🔒 Sua sessão foi encerrada pelo administrador.\n\nFaça login novamente.'), 300);
             } catch(e) { /* silencioso */ }
@@ -3797,7 +3994,7 @@
                 token:            token
             };
             try {
-                const resp = await fetch(FIREBASE_LOG_URL + '.json', {
+                const resp = await fetch(await comAuthNaUrl(FIREBASE_LOG_URL + '.json'), {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body:    JSON.stringify(entry)
@@ -3823,7 +4020,7 @@
             // Buscar loginAt para calcular duração
             let duracaoSegundos = null;
             try {
-                const getResp = await fetch(FIREBASE_LOG_URL + '/' + key + '.json');
+                const getResp = await fetch(await comAuthNaUrl(FIREBASE_LOG_URL + '/' + key + '.json'));
                 if (getResp.ok) {
                     const entry = await getResp.json();
                     if (entry && entry.loginAt) {
@@ -3835,7 +4032,7 @@
             } catch(e) { /* silencioso */ }
 
             try {
-                await fetch(FIREBASE_LOG_URL + '/' + key + '.json', {
+                await fetch(await comAuthNaUrl(FIREBASE_LOG_URL + '/' + key + '.json'), {
                     method:  'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body:    JSON.stringify({ logoutAt, duracaoSegundos })
@@ -3884,7 +4081,7 @@
 
             let logObj = {};
             try {
-                const resp = await fetch(FIREBASE_LOG_URL + '.json');
+                const resp = await fetch(await comAuthNaUrl(FIREBASE_LOG_URL + '.json'));
                 if (resp.ok) {
                     const data = await resp.json();
                     if (data && typeof data === 'object') logObj = data;
@@ -3992,7 +4189,7 @@
         async function limparLogsAcesso() {
             if (!confirm('Tem certeza que deseja apagar todos os registros de acesso? Esta ação não pode ser desfeita.')) return;
             try {
-                await fetch(FIREBASE_LOG_URL + '.json', { method: 'DELETE' });
+                await fetch(await comAuthNaUrl(FIREBASE_LOG_URL + '.json'), { method: 'DELETE' });
             } catch(e) {
                 console.warn('Erro ao limpar logs no Firebase:', e);
             }
@@ -4003,11 +4200,6 @@
         // INICIALIZAÇÃO
         // ============================================
         window.onload = async function() {
-            const codigoSalvo = localStorage.getItem('med_codigo_salvo');
-            if (codigoSalvo && confirm('Código salvo encontrado. Deseja restaurar?')) {
-                alert('Para restaurar, cole o código no editor e salve.');
-            }
-
             // Pré-carregar usuários da nuvem ao iniciar
             USUARIOS = await carregarUsuarios();
             
@@ -4021,21 +4213,28 @@
         };
 
         // ============================================
-        // CONFIGURAÇÃO DA API MANUS
+        // PROXY (Cloudflare Worker) — as chaves de IA reais NUNCA ficam aqui.
+        // O navegador chama o Worker, e é o Worker (rodando no servidor da
+        // Cloudflare, fora da vista de quem abrir "Ver código-fonte") quem
+        // guarda e usa as chaves de verdade pra falar com Mistral/Manus/Speechmatics.
+        // ============================================
+        const PROXY_BASE_URL = 'https://jolly-frost-a572.diegoferreira1991.workers.dev';
+        const APP_SHARED_SECRET = '7ctsqARGhasZjgbdGYYU9ZyNGqkDPUZn';
+
+        // ============================================
+        // CONFIGURAÇÃO DA API MANUS (via proxy)
         // ============================================
         const API_CONFIG = {
             USE_MOCK: false,
             BACKEND_URL: 'http://localhost:5000/api/diagnosis/analyze',
-            MANUS_API_KEY: 'LhgHbatbwbHpz4ABrcP92h',
-            MANUS_ENDPOINT: 'https://forge.manus.ai/v1/chat/completions'
+            MANUS_ENDPOINT: PROXY_BASE_URL + '/manus'
         };
 
         // ============================================
-        // CONFIGURAÇÃO DA API MISTRAL
+        // CONFIGURAÇÃO DA API MISTRAL (via proxy)
         // ============================================
         const MISTRAL_CONFIG = {
-            API_KEY: 'lLjl7t9nF12r3HmTf5yAStwnKva9PtzH',
-            ENDPOINT: 'https://api.mistral.ai/v1/chat/completions',
+            ENDPOINT: PROXY_BASE_URL + '/mistral',
             MODEL_TEXT: 'mistral-large-latest',
             MODEL_VISION: 'pixtral-large-latest'
         };
@@ -4051,7 +4250,7 @@
         // ============================================
         // FUNÇÕES DE MICROFONE - SPEECHMATICS
         // ============================================
-        const SPEECHMATICS_API_KEY = 'ciGUytbWpBXoEcJY35WJQmDIX6kwUXIO';
+        const SPEECHMATICS_JOBS_URL = PROXY_BASE_URL + '/speechmatics/jobs';
         let mediaRecorder = null;
         let audioChunks = [];
 
@@ -4180,10 +4379,10 @@
                     }
                 }));
 
-                const jobResponse = await fetch('https://asr.api.speechmatics.com/v2/jobs/', {
+                const jobResponse = await fetch(SPEECHMATICS_JOBS_URL, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${SPEECHMATICS_API_KEY}`
+                        'X-App-Secret': APP_SHARED_SECRET
                     },
                     body: formData
                 });
@@ -4203,8 +4402,8 @@
                 while (jobStatus !== 'done' && jobStatus !== 'rejected' && attempts < 120) {
                     await new Promise(r => setTimeout(r, 3000));
                     attempts++;
-                    const statusResp = await fetch(`https://asr.api.speechmatics.com/v2/jobs/${jobId}`, {
-                        headers: { 'Authorization': `Bearer ${SPEECHMATICS_API_KEY}` }
+                    const statusResp = await fetch(`${SPEECHMATICS_JOBS_URL}/${jobId}`, {
+                        headers: { 'X-App-Secret': APP_SHARED_SECRET }
                     });
                     if (!statusResp.ok) continue;
                     const statusData = await statusResp.json();
@@ -4222,8 +4421,8 @@
 
                 // Passo 3: Buscar resultado
                 setTranscriptionStatus(true, 'Baixando transcrição...');
-                const transcriptResp = await fetch(`https://asr.api.speechmatics.com/v2/jobs/${jobId}/transcript?format=json-v2`, {
-                    headers: { 'Authorization': `Bearer ${SPEECHMATICS_API_KEY}` }
+                const transcriptResp = await fetch(`${SPEECHMATICS_JOBS_URL}/${jobId}/transcript?format=json-v2`, {
+                    headers: { 'X-App-Secret': APP_SHARED_SECRET }
                 });
 
                 if (!transcriptResp.ok) {
@@ -4340,7 +4539,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${MISTRAL_CONFIG.API_KEY}`
+                        'X-App-Secret': APP_SHARED_SECRET
                     },
                     body: JSON.stringify({
                         model: MISTRAL_CONFIG.MODEL_TEXT,
@@ -4481,6 +4680,16 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             });
             document.getElementById('dashboard-nova-consulta').addEventListener('click', () => mostrarPagina('consultas'));
             document.getElementById('dashboard-historico').addEventListener('click', () => mostrarPagina('historico'));
+
+            document.getElementById('trocarSenhaBtn').addEventListener('click', abrirTrocarSenha);
+            document.getElementById('cancelarTrocarSenhaBtn').addEventListener('click', fecharTrocarSenha);
+            document.getElementById('confirmarTrocarSenhaBtn').addEventListener('click', trocarMinhaSenha);
+
+            document.getElementById('btn-exportar-backup').addEventListener('click', exportarBackup);
+            document.getElementById('btn-importar-backup').addEventListener('click', () => {
+                document.getElementById('input-importar-backup').click();
+            });
+            document.getElementById('input-importar-backup').addEventListener('change', importarBackup);
 
             document.getElementById('test-ai-btn').addEventListener('click', testarIA);
 
@@ -4743,46 +4952,36 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
         }
 
         // ============================================
-        // FUNÇÕES DE UPLOAD E ANÁLISE DE IMAGENS COM GOOGLE GEMINI (PROBLEMA 2)
+        // FUNÇÕES DE UPLOAD E ANÁLISE DE IMAGENS COM GOOGLE GEMINI
         // ============================================
         async function analisarImagemComGoogleAI(imageData, fileName) {
             try {
                 const mimeType = imageData.split(';')[0].split(':')[1];
                 const base64Data = imageData.split(',')[1];
-                const response = await fetch(MISTRAL_CONFIG.ENDPOINT, {
+                const response = await fetch(PROXY_BASE_URL + '/gemini-vision', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${MISTRAL_CONFIG.API_KEY}`
+                        'X-App-Secret': APP_SHARED_SECRET
                     },
                     body: JSON.stringify({
-                        model: MISTRAL_CONFIG.MODEL_VISION,
-                        messages: [{
-                            role: 'user',
-                            content: [
-                                {
-                                    type: 'image_url',
-                                    image_url: { url: `data:${mimeType};base64,${base64Data}` }
-                                },
-                                {
-                                    type: 'text',
-                                    text: 'Analise esta imagem de exame médico ou documento. Extraia e descreva todas as informações relevantes que encontrar, como resultados de exames, valores, diagnósticos, datas, etc. Formate a resposta de maneira clara e organizada.'
-                                }
-                            ]
-                        }],
-                        max_tokens: 1024
+                        mimeType,
+                        base64Data,
+                        prompt: 'Analise esta imagem de exame médico ou documento. Extraia e descreva todas as informações relevantes que encontrar, como resultados de exames, valores, diagnósticos, datas, etc. Formate a resposta de maneira clara e organizada.'
                     })
                 });
 
                 if (!response.ok) {
                     const errText = await response.text();
-                    throw new Error(`Erro na API Mistral: ${response.status} - ${errText}`);
+                    throw new Error(`Erro na API Gemini: ${response.status} - ${errText}`);
                 }
 
                 const data = await response.json();
-                return data.choices[0].message.content;
+                const texto = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+                if (!texto) throw new Error('Resposta da IA veio vazia.');
+                return texto;
             } catch (error) {
-                console.error('Erro ao analisar imagem com Mistral AI:', error);
+                console.error('Erro ao analisar imagem com Gemini:', error);
                 return `Não foi possível analisar a imagem ${fileName} automaticamente. Por favor, insira os resultados manualmente.`;
             }
         }
@@ -4792,7 +4991,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             const imagePreviewContainer = document.getElementById('image-preview-container');
             const analiseTextarea = document.getElementById('analise-imagens-ia');
             
-            updateAPIStatus('Analisando imagens com Mistral AI...', 'disconnected');
+            updateAPIStatus('Analisando imagens com Gemini AI...', 'disconnected');
             
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
@@ -5463,7 +5662,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${API_CONFIG.MANUS_API_KEY}`
+                            'X-App-Secret': APP_SHARED_SECRET
                         },
                         body: JSON.stringify({
                             model: 'gemini-2.5-flash',
@@ -5526,7 +5725,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${API_CONFIG.MANUS_API_KEY}`
+                            'X-App-Secret': APP_SHARED_SECRET
                         },
                         body: JSON.stringify({
                             model: 'gemini-2.5-flash',
