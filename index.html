@@ -2400,41 +2400,11 @@
                 </div>
                 <div class="news-content" id="oms-news-container">
                     <div class="news-item">
-                        <div class="news-date">
-                            <i class="far fa-clock"></i> 11 de Fevereiro de 2026 - 14:30
-                        </div>
-                        <div class="news-title">
-                            OMS anuncia novas diretrizes para tratamento de resistência antimicrobiana
-                        </div>
-                        <div class="news-summary">
-                            A Organização Mundial da Saúde publicou hoje recomendações atualizadas para o combate à resistência antimicrobiana, enfatizando o uso racional de antibióticos e programas de stewardship em hospitais de todo o mundo.
-                        </div>
-                    </div>
-                    <div class="news-item">
-                        <div class="news-date">
-                            <i class="far fa-clock"></i> 10 de Fevereiro de 2026 - 09:15
-                        </div>
-                        <div class="news-title">
-                            OMS declara emergência global de saúde para nova variante respiratória
-                        </div>
-                        <div class="news-summary">
-                            Com aumento de casos em 15 países, a OMS ativou protocolos de resposta rápida e recomenda vigilância epidemiológica intensificada e medidas de proteção para grupos de risco.
-                        </div>
-                    </div>
-                    <div class="news-item">
-                        <div class="news-date">
-                            <i class="far fa-clock"></i> 09 de Fevereiro de 2026 - 11:20
-                        </div>
-                        <div class="news-title">
-                            Campanha global de vacinação infantil atinge 85% de cobertura
-                        </div>
-                        <div class="news-summary">
-                            Relatório da OMS indica progresso significativo na imunização contra sarampo e poliomielite, mas alerta para desigualdades regionais que ainda representam risco de surtos.
-                        </div>
+                        <div class="news-summary"><i class="fas fa-spinner fa-spin"></i> Carregando notícias da OMS...</div>
                     </div>
                     <div style="margin-top: 15px; text-align: right;">
                         <small style="color: var(--gray-color);">
-                            <i class="fas fa-sync-alt"></i> Atualizado automaticamente via API OMS
+                            <i class="fas fa-sync-alt"></i> <span id="oms-news-atualizado">Atualizado agora via feed oficial da OMS</span>
                         </small>
                     </div>
                 </div>
@@ -4611,6 +4581,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             await testarConexaoManusAPI();
             configurarNavegacao();
             configurarEventListeners();
+            carregarNoticiasOMS();
             // Não carregar dados aqui, pois já foram carregados no login
             const micBtn = document.getElementById('microphone-btn');
             if (micBtn) {
@@ -7371,6 +7342,62 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 return c.data.startsWith(hoje);
             }).length;
             document.getElementById('diagnosticos-ia').textContent = consultas.filter(c => c.iaModel).length;
+        }
+
+        // ============================================
+        // NOTÍCIAS DA OMS (feed real, via proxy)
+        // ============================================
+        function formatarDataNoticia(dataRss) {
+            const d = new Date(dataRss);
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+                + ' - ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function embaralhar(lista) {
+            const copia = [...lista];
+            for (let i = copia.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copia[i], copia[j]] = [copia[j], copia[i]];
+            }
+            return copia;
+        }
+
+        async function carregarNoticiasOMS() {
+            const container = document.getElementById('oms-news-container');
+            const atualizadoEl = document.getElementById('oms-news-atualizado');
+            if (!container) return;
+
+            try {
+                const response = await fetch(PROXY_BASE_URL + '/who-news', {
+                    headers: { 'X-App-Secret': APP_SHARED_SECRET }
+                });
+                if (!response.ok) throw new Error('Falha ao buscar notícias da OMS');
+                const dados = await response.json();
+                const noticias = dados.noticias || [];
+                if (noticias.length === 0) throw new Error('Nenhuma notícia recebida');
+
+                // Sempre pega as notícias mais recentes, mas embaralha a ordem de exibição
+                const escolhidas = embaralhar(noticias.slice(0, 8)).slice(0, 3);
+
+                container.innerHTML = escolhidas.map(n =>
+                    '<div class="news-item">'
+                        + '<div class="news-date"><i class="far fa-clock"></i> ' + formatarDataNoticia(n.data) + '</div>'
+                        + '<div class="news-title">' + (n.link
+                            ? '<a href="' + n.link + '" target="_blank" rel="noopener" style="color:inherit; text-decoration:none;">' + n.titulo + ' <i class="fas fa-external-link-alt" style="font-size:0.75em;"></i></a>'
+                            : n.titulo)
+                        + '</div>'
+                        + '<div class="news-summary">' + n.resumo + '</div>'
+                    + '</div>'
+                ).join('');
+
+                if (atualizadoEl) {
+                    atualizadoEl.textContent = 'Atualizado agora via feed oficial da OMS (who.int)';
+                }
+            } catch (e) {
+                console.warn('Erro ao carregar notícias da OMS:', e);
+                container.innerHTML = '<div class="news-item"><div class="news-summary">Não foi possível carregar as notícias da OMS agora. Tente novamente mais tarde.</div></div>';
+            }
         }
 
         // ============================================
