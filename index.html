@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Centro de Diagnóstico Médico - Sistema Inteligente com IA Real</title>
+    <title>Centro de Diagnóstico Médico - Sistema Inteligente com Apoio de IA</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Firebase Authentication (login real, protegido por token) -->
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -2340,7 +2340,7 @@
         <section id="dashboard" class="main-content active-page">
             <div class="welcome-message">
                 <h2><i class="fas fa-user-md"></i> Bem-vindo, <span id="dashboardDoctorName">Dr.</span></h2>
-                <p>Sistema Inteligente de Diagnóstico Médico</p>
+                <p>Sistema Inteligente de Apoio à Gestão Médica</p>
             </div>
             
             <div class="card">
@@ -2357,7 +2357,7 @@
                     <div class="card" style="text-align: center;">
                         <i class="fas fa-stethoscope" style="font-size: 3rem; color: var(--accent-color); margin-bottom: 15px;"></i>
                         <h3>Nova Consulta</h3>
-                        <p>Realize consultas completas com IA real</p>
+                        <p>Consultas completas com apoio de IA</p>
                         <button class="btn btn-accent" style="margin-top: 15px;" id="dashboard-nova-consulta">
                             <i class="fas fa-plus"></i> Nova Consulta
                         </button>
@@ -2671,7 +2671,7 @@
                     <div class="tab active" data-tab="anamnese">Anamnese</div>
                     <div class="tab" data-tab="exame-fisico">Exame Físico</div>
                     <div class="tab" data-tab="exames">Exames Complementares</div>
-                    <div class="tab" data-tab="diagnostico">Diagnóstico com IA</div>
+                    <div class="tab" data-tab="diagnostico">Sugestão Diagnóstica (IA)</div>
                 </div>
                 
                 <div id="anamnese" class="tab-content active">
@@ -2893,29 +2893,33 @@
                             <i class="fas fa-arrow-left"></i> Anterior: Exame Físico
                         </button>
                         <button class="btn btn-next" onclick="mostrarProximaAba('exames')">
-                            <i class="fas fa-arrow-right"></i> Próximo: Diagnóstico com IA
+                            <i class="fas fa-arrow-right"></i> Próximo: Sugestão Diagnóstica (IA)
                         </button>
                     </div>
                 </div>
-                
+
                 <div id="diagnostico" class="tab-content">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">Diagnóstico Inteligente com IA Real</h3>
+                            <h3 class="card-title">Sugestão Diagnóstica com Apoio de IA</h3>
                             <button class="btn btn-accent" id="generate-diagnosis-btn">
-                                <i class="fas fa-robot"></i> Gerar Diagnóstico com IA
+                                <i class="fas fa-robot"></i> Gerar Sugestão com IA
                             </button>
                         </div>
+                        <p style="margin: -10px 0 15px; color: var(--gray-color); font-size: 0.9rem;">
+                            <i class="fas fa-info-circle"></i> Conteúdo gerado por IA, de caráter exclusivamente
+                            informativo e auxiliar. A decisão diagnóstica e terapêutica é sempre do médico responsável.
+                        </p>
                         
                         <div id="ai-diagnosis-area" style="display: none;">
                             <div class="ai-diagnosis-container">
-                                <h4><i class="fas fa-brain"></i> Hipóteses Diagnósticas - Manus AI (Baseado nos dados clínicos E imagens/documentos do paciente):</h4>
+                                <h4><i class="fas fa-brain"></i> Hipóteses Diagnósticas com Apoio de IA (baseadas nos dados clínicos e imagens/documentos do paciente):</h4>
                                 <div id="diagnostic-alerts"></div>
                                 <div id="ai-loading" class="loading-spinner" style="display: none;">
                                     <div class="spinner"></div>
-                                    <p>Analisando dados clínicos e imagens em tempo real...</p>
+                                    <p>Analisando dados clínicos e imagens...</p>
                                     <p style="font-size: 0.9rem; color: var(--gray-color); margin-top: 10px;">
-                                        <span id="model-indicator">Usando: Manus Forge API</span>
+                                        <span id="model-indicator"></span>
                                         <br><span id="response-time"></span>
                                     </p>
                                 </div>
@@ -2998,8 +3002,8 @@
                         
                         <div id="diagnosis-placeholder" style="text-align: center; padding: 40px 20px;">
                             <i class="fas fa-robot" style="font-size: 4rem; color: #ddd; margin-bottom: 20px;"></i>
-                            <h3>Diagnóstico por Inteligência Artificial</h3>
-                            <p>Clique no botão "Gerar Diagnóstico com IA" para analisar os dados clínicos e imagens desta consulta.</p>
+                            <h3>Sugestão Diagnóstica por Inteligência Artificial</h3>
+                            <p>Clique no botão "Gerar Sugestão com IA" para analisar os dados clínicos e imagens desta consulta.</p>
                             <p style="font-size: 0.9rem; color: var(--gray-color); margin-top: 10px;">
                                 <i class="fas fa-bolt"></i> Análise baseada nos sintomas, exames E imagens/documentos fornecidos
                             </p>
@@ -3059,26 +3063,23 @@
         <section id="termos-de-uso" class="main-content">
             <h2 class="page-title"><i class="fas fa-file-contract"></i> Termos de Uso</h2>
 
-            <div class="card" style="background:#fff9e6; border-left:5px solid var(--warning-color);">
-                <p style="margin:0; font-size:0.95rem; color:#7a5c00;">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <strong>Aviso:</strong> este texto é um modelo geral de referência e não constitui aconselhamento jurídico.
-                    Antes de disponibilizar este sistema comercialmente a terceiros, recomenda-se revisão por um advogado
-                    especializado em direito digital, proteção de dados (LGPD) e/ou direito médico, para adequação à sua
-                    situação específica.
-                </p>
-            </div>
-
             <div class="card">
-                <div class="card-header"><h3 class="card-title">1. Objeto e Natureza do Sistema</h3></div>
-                <p>Este sistema é uma ferramenta de apoio à gestão de consultório médico e ao registro clínico, que
-                inclui recursos de auxílio à decisão (sugestões de diagnóstico, sugestões de tratamento e transcrição
-                de áudio) gerados por modelos de Inteligência Artificial de terceiros.</p>
-                <p style="margin-top:10px;"><strong>O sistema não substitui, em nenhuma hipótese, o julgamento clínico,
-                a formação técnica e a responsabilidade profissional do médico usuário.</strong> Toda sugestão gerada
-                por IA (diagnóstico, tratamento, posologia, quantidades, interações medicamentosas, HDA, análise de
-                exames/imagens) deve ser obrigatoriamente revisada, validada e, se necessário, corrigida pelo profissional
-                antes de qualquer uso clínico ou entrega ao paciente.</p>
+                <div class="card-header"><h3 class="card-title">1. Objeto, Natureza e Finalidade Exclusivamente Auxiliar</h3></div>
+                <p>Este sistema ("Sistema") é uma ferramenta de apoio administrativo e informacional à atividade médica,
+                que inclui recursos de organização de prontuário, geração de documentos e recursos de apoio à decisão
+                (sugestões diagnósticas, sugestões terapêuticas, transcrição de áudio e análise de imagens/documentos)
+                gerados com o auxílio de modelos de Inteligência Artificial de terceiros.</p>
+                <p style="margin-top:10px;"><strong>Todo conteúdo gerado por Inteligência Artificial no Sistema tem
+                caráter EXCLUSIVAMENTE informativo, auxiliar e não vinculante.</strong> O Sistema não realiza,
+                não substitui e não representa diagnóstico, prescrição ou qualquer ato médico. A avaliação clínica,
+                o diagnóstico, a definição da conduta terapêutica e toda e qualquer decisão sobre o cuidado do paciente
+                são de responsabilidade <strong>exclusiva, integral e intransferível do profissional médico usuário</strong>,
+                no pleno exercício de sua autonomia profissional, nos termos do Código de Ética Médica e da legislação
+                aplicável, cabendo a ele revisar, validar, corrigir ou descartar integralmente qualquer sugestão do
+                Sistema antes de qualquer uso clínico.</p>
+                <p style="margin-top:10px;">O uso do Sistema é destinado exclusivamente a profissionais de saúde
+                legalmente habilitados, no exercício de sua atividade profissional, não se destinando a consumidores
+                finais nem a pacientes.</p>
             </div>
 
             <div class="card">
@@ -3089,36 +3090,59 @@
             </div>
 
             <div class="card">
-                <div class="card-header"><h3 class="card-title">3. Armazenamento e Titularidade dos Dados de Pacientes</h3></div>
+                <div class="card-header"><h3 class="card-title">3. Armazenamento de Dados e Processamento por Inteligência Artificial de Terceiros</h3></div>
                 <p>Os dados de pacientes (cadastro, histórico, consultas, prescrições) são armazenados
-                <strong>localmente no computador/rede do próprio profissional</strong>, e não são transmitidos,
-                processados ou armazenados pelo desenvolvedor/fornecedor do sistema.</p>
+                <strong>localmente no computador/rede do próprio profissional</strong>, e não são armazenados de forma
+                permanente pelo desenvolvedor/fornecedor do Sistema.</p>
+                <p style="margin-top:10px;">Para gerar as sugestões de apoio à decisão, o Sistema <strong>envia parte
+                dos dados clínicos informados</strong> (sintomas, exame físico, resultados de exames, imagens/documentos
+                enviados e/ou áudio da consulta) a provedores de infraestrutura de Inteligência Artificial de terceiros,
+                nacionais e internacionais, estritamente para processamento da solicitação. Como medida de proteção,
+                o Sistema <strong>não envia o nome do paciente</strong> nas solicitações de texto realizadas a esses
+                provedores, utilizando identificação genérica em seu lugar. Essa medida reduz, mas não elimina
+                integralmente, o risco de identificação — por exemplo, imagens de exames ou áudios de consulta enviados
+                pelo próprio usuário podem eventualmente conter informações identificáveis visíveis/audíveis no seu
+                conteúdo original, sendo responsabilidade do usuário evitar o envio de identificação desnecessária
+                nesses casos.</p>
                 <p style="margin-top:10px;">O médico usuário é o <strong>controlador</strong> desses dados pessoais e
-                sensíveis, nos termos da Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD), sendo o único
-                responsável por: (a) obter as bases legais e consentimentos necessários junto a seus pacientes; (b)
-                garantir sigilo médico e segurança da informação no seu próprio ambiente computacional; (c) realizar
-                cópias de segurança (backup) regulares dos seus dados, utilizando o recurso de exportação disponível
-                no sistema. O desenvolvedor não tem acesso a esses dados e não se responsabiliza por sua perda,
-                extravio, corrupção ou vazamento decorrentes de falha no equipamento do usuário, ausência de backup,
-                ou uso indevido da conta pelo profissional ou por terceiros sob sua responsabilidade.</p>
+                sensíveis, nos termos da Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD), sendo responsável
+                por: (a) obter as bases legais e consentimentos necessários junto a seus pacientes, inclusive quanto ao
+                uso de ferramentas de apoio por Inteligência Artificial; (b) garantir sigilo médico e segurança da
+                informação no seu próprio ambiente computacional; (c) realizar cópias de segurança (backup) regulares
+                dos seus dados, utilizando o recurso de exportação disponível no Sistema. O desenvolvedor não armazena
+                permanentemente esses dados e não se responsabiliza por sua perda, extravio, corrupção ou vazamento
+                decorrentes de falha no equipamento do usuário, ausência de backup, ou uso indevido da conta pelo
+                profissional ou por terceiros sob sua responsabilidade.</p>
             </div>
 
             <div class="card">
                 <div class="card-header"><h3 class="card-title">4. Prescrições e Validade Legal</h3></div>
                 <p>O sistema auxilia na organização e impressão de receituários. A validade legal da prescrição
                 depende da <strong>assinatura e carimbo físico do médico responsável</strong> no documento impresso,
-                conforme normas do Conselho Federal de Medicina (CFM) e demais órgãos reguladores aplicáveis. O
-                desenvolvedor não se responsabiliza por prescrições emitidas sem a devida assinatura/carimbo, nem por
-                erros de conteúdo não identificados pelo profissional na revisão antes da impressão.</p>
+                conforme normas do Conselho Federal de Medicina (CFM) e demais órgãos reguladores aplicáveis. Eventuais
+                quantidades, dosagens ou totais calculados automaticamente pelo Sistema são meramente auxiliares e devem
+                ser integralmente conferidos pelo profissional antes da assinatura. O desenvolvedor não se responsabiliza
+                por prescrições emitidas sem a devida assinatura/carimbo, nem por erros de conteúdo não identificados
+                pelo profissional na revisão antes da impressão.</p>
             </div>
 
             <div class="card">
-                <div class="card-header"><h3 class="card-title">5. Limitação de Responsabilidade</h3></div>
+                <div class="card-header"><h3 class="card-title">5. Limitação de Responsabilidade e Indenização</h3></div>
                 <p>Na máxima extensão permitida pela legislação aplicável, o desenvolvedor/fornecedor do sistema não
-                se responsabiliza por: (a) decisões clínicas tomadas com base em sugestões geradas por IA; (b) danos
-                a pacientes decorrentes de uso do sistema; (c) indisponibilidade temporária de serviços de terceiros
-                (provedores de IA, hospedagem, conectividade); (d) perda de dados armazenados localmente pelo usuário;
-                (e) uso do sistema em desacordo com a legislação vigente ou com estes Termos.</p>
+                se responsabiliza, em nenhuma hipótese, por: (a) decisões clínicas, diagnósticas ou terapêuticas
+                tomadas com base em sugestões geradas por IA; (b) danos diretos, indiretos, morais ou materiais a
+                pacientes ou terceiros decorrentes do uso, mau uso ou impossibilidade de uso do Sistema; (c)
+                indisponibilidade temporária ou permanente de serviços de terceiros (provedores de IA, hospedagem,
+                conectividade); (d) perda de dados armazenados localmente pelo usuário; (e) uso do Sistema em
+                desacordo com a legislação vigente, com as normas éticas da profissão médica ou com estes Termos.</p>
+                <p style="margin-top:10px;">O Sistema é fornecido <strong>"no estado em que se encontra"</strong>
+                ("as is"), sem garantias de qualquer natureza, expressas ou implícitas, quanto a resultados, precisão
+                ou adequação a uma finalidade específica das sugestões geradas por Inteligência Artificial.</p>
+                <p style="margin-top:10px;">O usuário concorda em <strong>defender, indenizar e isentar de
+                responsabilidade</strong> o desenvolvedor/fornecedor do Sistema em relação a qualquer reclamação,
+                processo, dano ou prejuízo de terceiros (incluindo pacientes) decorrente: (i) de decisões clínicas
+                tomadas pelo usuário; (ii) do descumprimento destes Termos; ou (iii) do uso inadequado do Sistema
+                pelo usuário ou por terceiros sob sua responsabilidade.</p>
             </div>
 
             <div class="card">
@@ -3129,21 +3153,29 @@
             </div>
 
             <div class="card">
-                <div class="card-header"><h3 class="card-title">7. Cancelamento e Rescisão</h3></div>
-                <p>O acesso pode ser suspenso ou encerrado, por qualquer das partes, mediante aviso prévio, nos termos
-                comerciais acordados no momento da contratação. Recomenda-se que o profissional realize exportação de
-                seus dados regularmente e especialmente antes do encerramento do acesso.</p>
+                <div class="card-header"><h3 class="card-title">7. Natureza da Relação e Cancelamento</h3></div>
+                <p>Estes Termos, juntamente com eventual proposta comercial e/ou comprovante de pagamento aplicável,
+                constituem o acordo integral entre as partes para a disponibilização do Sistema, sendo o presente
+                acesso concedido no contexto de uma relação profissional entre desenvolvedor e profissional de saúde,
+                para uso no exercício de sua atividade — e não uma relação de consumo destinada a consumidor final.</p>
+                <p style="margin-top:10px;">O acesso pode ser suspenso ou encerrado, por qualquer das partes, mediante
+                aviso prévio, nos termos comerciais acordados no momento da contratação. Recomenda-se que o profissional
+                realize exportação de seus dados regularmente e especialmente antes do encerramento do acesso.</p>
             </div>
 
             <div class="card">
-                <div class="card-header"><h3 class="card-title">8. Legislação Aplicável e Foro</h3></div>
-                <p>Estes Termos são regidos pela legislação brasileira, incluindo a Lei Geral de Proteção de Dados
-                (LGPD) e o Código de Defesa do Consumidor, no que couber. Fica eleito o foro do domicílio do
-                desenvolvedor para dirimir eventuais controvérsias, salvo disposição legal em contrário.</p>
+                <div class="card-header"><h3 class="card-title">8. Disposições Gerais, Legislação Aplicável e Foro</h3></div>
+                <p>Caso qualquer cláusula destes Termos seja considerada nula, inválida ou inexequível por autoridade
+                competente, as demais cláusulas permanecerão em pleno vigor e efeito. A tolerância quanto ao eventual
+                descumprimento de qualquer cláusula não constitui novação ou renúncia ao direito de exigi-la.</p>
+                <p style="margin-top:10px;">Estes Termos são regidos pela legislação brasileira, incluindo a Lei Geral
+                de Proteção de Dados (LGPD) e, no que eventualmente for aplicável dada a natureza profissional da
+                relação, o Código de Defesa do Consumidor. Fica eleito o foro do domicílio do desenvolvedor para
+                dirimir eventuais controvérsias, salvo disposição legal em contrário.</p>
             </div>
 
             <div class="card" style="text-align:center; color: var(--gray-color); font-size:0.9rem;">
-                Última atualização: 26/07/2026
+                Última atualização: 27/07/2026
             </div>
         </section>
     </main>
@@ -3151,11 +3183,10 @@
     <!-- Footer -->
     <footer id="mainFooter" style="display: none;">
         <div class="container">
-            <p>Centro de Diagnóstico Médico Inteligente &copy; 2026 - Sistema com IA Real via Manus API</p>
+            <p>Centro de Diagnóstico Médico Inteligente &copy; 2026</p>
             <p style="margin-top: 10px; font-size: 0.9rem;">
-                <i class="fas fa-robot"></i> IA Médica em tempo real |
-                <i class="fas fa-plug"></i> Conexão Manus Forge API |
-                <i class="fas fa-shield-alt"></i> Diagnósticos baseados em dados clínicos e imagens do paciente
+                <i class="fas fa-robot"></i> Sugestões clínicas com apoio de Inteligência Artificial |
+                <i class="fas fa-shield-alt"></i> Uso profissional exclusivo — consulte os <a href="#" class="nav-link" data-page="termos-de-uso" style="color:inherit;">Termos de Uso</a>
             </p>
             <div class="developer-footer">
                 <i class="fas fa-code"></i> Desenvolvido por <strong>Dr. Diêgo Ferreira</strong>
@@ -6206,13 +6237,17 @@ Responda EXATAMENTE no formato especificado.`
             const idade = paciente ? calcularIdade(paciente.dataNascimento) : 'Não informada';
             const sexo = paciente ? paciente.sexo : 'Não informado';
             const historico = paciente ? paciente.historicoMedico : 'Não informado';
-            const sintomasList = dados.sintomas.length > 0 
-                ? dados.sintomas.map(s => `- ${s}`).join('\n') 
+            const sintomasList = dados.sintomas.length > 0
+                ? dados.sintomas.map(s => `- ${s}`).join('\n')
                 : '- Nenhum sintoma adicional informado';
+            // IMPORTANTE (privacidade): nunca enviamos o nome real do paciente pra IA —
+            // só um identificador genérico. Os dados de identificação continuam
+            // corretos e intactos no prontuário local; só o texto ENVIADO à IA de
+            // terceiros é anonimizado.
             return `=== ANÁLISE DE CASO CLÍNICO COM CORRELAÇÃO POR IMAGEM ===
 
 INFORMAÇÕES DEMOGRÁFICAS:
-- Nome: ${paciente ? paciente.nome : 'Não informado'}
+- Paciente: [identificação omitida por privacidade]
 - Idade: ${idade} anos
 - Gênero: ${sexo}
 - Peso: ${dados.peso || 'Não informado'}
@@ -6360,7 +6395,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
             document.getElementById('generate-diagnosis-btn').disabled = show;
             document.getElementById('generate-diagnosis-btn').innerHTML = show 
                 ? '<i class="fas fa-spinner fa-spin"></i> Analisando dados...'
-                : '<i class="fas fa-robot"></i> Gerar Diagnóstico com IA';
+                : '<i class="fas fa-robot"></i> Gerar Sugestão com IA';
         }
 
         function exibirDiagnosticosCards(diagnosticos) {
