@@ -5766,6 +5766,18 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             apiStatus.innerHTML = `<i class="fas fa-plug"></i> <span>${esc(message)}</span>`;
         }
 
+        // Deixa so o nome do diagnostico: tira formatacao (**, #), prefixos ("Hipotese:") e qualquer texto alem da 1a linha.
+        function apenasNomeDoDiagnostico(texto) {
+            const bruto = String(texto || '').trim();
+            // se a IA desobedeceu e escreveu um paragrafo, o diagnostico costuma vir em **negrito**: usa o primeiro
+            const negrito = bruto.match(/\*\*([^*]{3,120})\*\*/);
+            let t = (bruto.length > 100 && negrito) ? negrito[1] : bruto;
+            t = t.replace(/[*_#`>]/g, '').split('\n').map(l => l.trim()).filter(Boolean)[0] || '';
+            t = t.replace(/^(a\s+)?(principal\s+)?(hip[oó]tese(\s+diagn[oó]stica)?(\s+mais\s+prov[aá]vel)?|diagn[oó]stico(\s+mais\s+prov[aá]vel)?)\s*(é|e|:|-|–)\s*(a|o|um|uma)?\s*/i, '');
+            t = t.split(/[.;](?:\s|$)/)[0].trim();
+            return t.length > 140 ? t.slice(0, 140).trim() + '…' : t;
+        }
+
         async function testarIA() {
             const symptoms = document.getElementById('test-symptoms').value;
             if (!symptoms.trim()) {
@@ -5775,11 +5787,11 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             updateAPIStatus('Testando a IA...', 'disconnected');
             try {
                 const resposta = await chamarManusAPI([
-                    { role: 'system', content: 'Você é um médico especialista. Responda de forma concisa.' },
-                    { role: 'user', content: `Analise rapidamente: ${symptoms}` }
-                ]);
+                    { role: 'system', content: 'Você é um médico clínico. Dado o quadro do paciente, responda SOMENTE com o NOME da hipótese diagnóstica mais provável (exemplo de resposta: Pneumonia adquirida na comunidade). Não escreva explicações, características, recomendações, frases, listas nem formatação. Apenas o nome do diagnóstico. Mesmo com poucos dados, dê a hipótese mais provável. Só responda Dados insuficientes se o texto não descrever nenhum sintoma.' },
+                    { role: 'user', content: 'Quadro: ' + symptoms }
+                ], 300);
                 document.getElementById('test-result').style.display = 'block';
-                document.getElementById('test-result-text').textContent = resposta || 'IA funcionando corretamente!';
+                document.getElementById('test-result-text').textContent = apenasNomeDoDiagnostico(resposta) || 'Dados insuficientes';
                 updateAPIStatus('IA testada com sucesso', 'connected');
             } catch (error) {
                 console.error('Erro no teste:', error);
