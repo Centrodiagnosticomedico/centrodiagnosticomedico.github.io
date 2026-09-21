@@ -2419,7 +2419,7 @@
                     <div>
                         <h4><i class="fas fa-robot"></i> Sistema de IA Configurado:</h4>
                         <ul style="margin-left: 20px; margin-top: 10px;">
-                            <li>Manus Forge API: <span id="manus-status" style="color: var(--accent-color);">✓ Conectada</span></li>
+                            <li>IA de texto (Gemini/Groq): <span id="manus-status" style="color: var(--accent-color);">✓ Conectada</span></li>
                             <li>Transcrição de voz: <span id="voice-status" style="color: var(--accent-color);">WebkitSpeechRecognition</span></li>
                             <li>Tipo: API nativa do navegador</li>
                         </ul>
@@ -4263,15 +4263,15 @@
         const API_CONFIG = {
             USE_MOCK: false,
             BACKEND_URL: 'http://localhost:5000/api/diagnosis/analyze',
-            MANUS_ENDPOINT: PROXY_BASE_URL + '/manus'
+            MANUS_ENDPOINT: PROXY_BASE_URL + '/gemini-chat'   // IA principal de diagnostico/tratamento: Gemini
         };
 
         // ============================================
         // CONFIGURAÇÃO DA API MISTRAL (via proxy)
         // ============================================
         const MISTRAL_CONFIG = {
-            ENDPOINT: PROXY_BASE_URL + '/mistral',
-            MODEL_TEXT: 'mistral-large-latest',
+            ENDPOINT: PROXY_BASE_URL + '/groq-chat',   // resumo da conversa (HDA): Groq
+            MODEL_TEXT: 'openai/gpt-oss-120b',
             MODEL_VISION: 'pixtral-large-latest'
         };
 
@@ -4571,10 +4571,10 @@ ${conversa}
 Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
 
             try {
-                // Mistral primeiro; se ela falhar (limite de uso, chave...), tenta o Gemini pelo Worker
+                // Groq primeiro; se falhar (limite de uso, chave...), tenta o Gemini pelo Worker
                 let texto = '';
                 let ultimoErro = null;
-                for (const alvo of [MISTRAL_CONFIG.ENDPOINT, PROXY_BASE_URL + '/gemini-chat']) {
+                for (const alvo of [MISTRAL_CONFIG.ENDPOINT, PROXY_BASE_URL + '/gemini-chat']) {   // Groq primeiro, Gemini de reserva
                     try {
                         const response = await fetch(alvo, {
                             method: 'POST',
@@ -5728,7 +5728,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
         // ============================================
         async function testarConexaoManusAPI() {
             try {
-                updateAPIStatus('Testando conexão Manus...', 'disconnected');
+                updateAPIStatus('Testando conexão com a IA...', 'disconnected');
                 if (!API_CONFIG.USE_MOCK) {
                     const response = await fetch(API_CONFIG.MANUS_ENDPOINT, {
                         method: 'POST',
@@ -5737,7 +5737,6 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                             ...appAuthHeaders()
                         },
                         body: JSON.stringify({
-                            model: 'gemini-2.5-flash',
                             messages: [
                                 { role: 'system', content: 'Responda apenas "OK" se estiver funcionando.' },
                                 { role: 'user', content: 'Teste de conexão' }
@@ -5749,13 +5748,13 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 }
                 document.getElementById('manus-status').textContent = '✓ Conectada';
                 document.getElementById('manus-status').style.color = 'var(--accent-color)';
-                updateAPIStatus('Manus AI Conectada', 'connected');
+                updateAPIStatus('IA conectada', 'connected');
                 return true;
             } catch (error) {
                 console.error('Erro ao testar Manus API:', error);
-                document.getElementById('manus-status').textContent = '✗ Modo Simulação';
+                document.getElementById('manus-status').textContent = '✗ Indisponível';
                 document.getElementById('manus-status').style.color = 'var(--warning-color)';
-                updateAPIStatus('Manus AI - Modo Simulação', 'disconnected');
+                updateAPIStatus('IA indisponível', 'disconnected');
                 return false;
             }
         }
@@ -5773,28 +5772,28 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 alert('Digite alguns sintomas para testar a IA');
                 return;
             }
-            updateAPIStatus('Testando Manus AI...', 'disconnected');
+            updateAPIStatus('Testando a IA...', 'disconnected');
             try {
                 const resposta = await chamarManusAPI([
                     { role: 'system', content: 'Você é um médico especialista. Responda de forma concisa.' },
                     { role: 'user', content: `Analise rapidamente: ${symptoms}` }
                 ]);
                 document.getElementById('test-result').style.display = 'block';
-                document.getElementById('test-result-text').textContent = resposta || 'Manus AI funcionando corretamente!';
-                updateAPIStatus('Manus AI Testada com Sucesso', 'connected');
+                document.getElementById('test-result-text').textContent = resposta || 'IA funcionando corretamente!';
+                updateAPIStatus('IA testada com sucesso', 'connected');
             } catch (error) {
                 console.error('Erro no teste:', error);
                 document.getElementById('test-result').style.display = 'block';
-                document.getElementById('test-result-text').textContent = 'Usando modo de simulação. Verifique a conexão.';
-                updateAPIStatus('Modo Simulação', 'disconnected');
+                document.getElementById('test-result-text').textContent = 'A IA não respondeu. Verifique a conexão.';
+                updateAPIStatus('IA indisponível', 'disconnected');
             }
         }
 
-        // Chama a IA de texto: primeiro a Manus; se ela falhar, o Gemini (via Worker). Se as duas falharem, LEVANTA ERRO:
+        // Chama a IA de texto: primeiro o Gemini; se ele falhar, o Groq (via Worker). Se os dois falharem, LEVANTA ERRO:
         // o sistema nunca mais inventa diagnostico/receita quando a IA nao responde.
         async function chamarManusAPI(messages, maxTokens = 2000) {
-            const corpo = JSON.stringify({ model: 'gemini-2.5-flash', messages: messages, temperature: 0.3, max_tokens: maxTokens });
-            const tentativas = [API_CONFIG.MANUS_ENDPOINT, PROXY_BASE_URL + '/gemini-chat'];
+            const corpo = JSON.stringify({ messages: messages, temperature: 0.3, max_tokens: maxTokens });
+            const tentativas = [API_CONFIG.MANUS_ENDPOINT, PROXY_BASE_URL + '/groq-chat'];
             let ultimoErro = null;
             for (const url of tentativas) {
                 try {
@@ -7065,7 +7064,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                         tratamento: tratamento,
                         prescricao: document.getElementById('prescricao').value,
                         medico: currentDoctorName,
-                        iaModel: "Manus AI",
+                        iaModel: "IA (Gemini/Groq)",
                         observacoes: document.getElementById('observacoes-consulta').value,
                         finalizada: true,
                         imagens_analisadas: uploadedImages.length > 0 ? uploadedImages.length : 0
@@ -7099,7 +7098,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                     tratamento: tratamento,
                     prescricao: document.getElementById('prescricao').value,
                     medico: currentDoctorName,
-                    iaModel: "Manus AI",
+                    iaModel: "IA (Gemini/Groq)",
                     observacoes: document.getElementById('observacoes-consulta').value,
                     finalizada: true,
                     imagens_analisadas: uploadedImages.length > 0 ? uploadedImages.length : 0
