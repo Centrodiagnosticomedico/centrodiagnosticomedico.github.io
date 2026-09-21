@@ -5786,84 +5786,33 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             }
         }
 
+        // Chama a IA de texto: primeiro a Manus; se ela falhar, o Gemini (via Worker). Se as duas falharem, LEVANTA ERRO:
+        // o sistema nunca mais inventa diagnostico/receita quando a IA nao responde.
         async function chamarManusAPI(messages, maxTokens = 2000) {
-            if (!API_CONFIG.USE_MOCK) {
+            const corpo = JSON.stringify({ model: 'gemini-2.5-flash', messages: messages, temperature: 0.3, max_tokens: maxTokens });
+            const tentativas = [API_CONFIG.MANUS_ENDPOINT, PROXY_BASE_URL + '/gemini-chat'];
+            let ultimoErro = null;
+            for (const url of tentativas) {
                 try {
-                    const response = await fetch(API_CONFIG.MANUS_ENDPOINT, {
+                    const response = await fetch(url, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...appAuthHeaders()
-                        },
-                        body: JSON.stringify({
-                            model: 'gemini-2.5-flash',
-                            messages: messages,
-                            temperature: 0.3,
-                            max_tokens: maxTokens
-                        })
+                        headers: { 'Content-Type': 'application/json', ...appAuthHeaders() },
+                        body: corpo
                     });
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error('HTTP ' + response.status + ' em ' + url.replace(PROXY_BASE_URL, ''));
                     const data = await response.json();
-                    return data.choices[0].message.content;
+                    const texto = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+                    if (!texto || !String(texto).trim()) throw new Error('resposta vazia em ' + url.replace(PROXY_BASE_URL, ''));
+                    return texto;
                 } catch (error) {
-                    console.error('Erro ao chamar API Manus:', error);
-                    return gerarRespostaMock(messages);
+                    ultimoErro = error;
+                    console.warn('IA indisponivel (' + url.replace(PROXY_BASE_URL, '') + '):', error);
                 }
-            } else {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                return gerarRespostaMock(messages);
             }
+            throw new Error('A IA não respondeu (' + (ultimoErro ? ultimoErro.message : 'sem detalhes') + ')');
         }
 
-        function gerarRespostaMock(messages) {
-            const userPrompt = messages.find(m => m.role === 'user')?.content || '';
-            if (userPrompt.toLowerCase().includes('tosse') || userPrompt.toLowerCase().includes('febre') || 
-                userPrompt.toLowerCase().includes('pneumonia') || userPrompt.toLowerCase().includes('respiratório')) {
-                return `=== HIPÓTESE 1 ===
-Nome: Pneumonia Adquirida na Comunidade (PAC) - Provável etiologia bacteriana
-Confiança: 85%
-Sintomas correlatos: Febre (38.5°C), tosse produtiva com expectoração purulenta, dor torácica ventilatório-dependente, taquipneia, hipoxemia leve, estertores crepitantes
-Justificativa: O paciente apresenta quadro clínico clássico de pneumonia bacteriana.
-Achados de imagem: Opacidade pulmonar em base direita com broncogramas aéreos, compatível com consolidação.
-
-=== HIPÓTESE 2 ===
-Nome: Broncopneumonia por Germes Atípicos
-Confiança: 60%
-Sintomas correlatos: Febre, tosse seca, fadiga, mialgia, cefaleia
-Justificativa: Agentes atípicos como Mycoplasma pneumoniae frequentemente apresentam-se com início mais gradual.
-Achados de imagem: Infiltrado intersticial difuso, sem consolidações evidentes.
-
-=== HIPÓTESE 3 ===
-Nome: Influenza com Comprometimento Pulmonar
-Confiança: 45%
-Sintomas correlatos: Febre alta súbita, tosse seca, mialgia intensa, prostração
-Justificativa: O início agudo com febre alta e mialgia intensa é sugestivo de influenza.
-Achados de imagem: Espessamento peribrônquico e pequenas opacidades em vidro fosco.`;
-            }
-            return `=== HIPÓTESE 1 ===
-Nome: Diagnóstico Baseado nos Sintomas Apresentados
-Confiança: 75%
-Sintomas correlatos: ${userPrompt.split('\n')[0] || 'Sintomas informados'}
-Justificativa: Análise baseada nos dados clínicos fornecidos.
-Achados de imagem: Correlação com exames de imagem recomendada.
-
-=== HIPÓTESE 2 ===
-Nome: Diagnóstico Diferencial Relevante
-Confiança: 50%
-Sintomas correlatos: Manifestações clínicas compatíveis
-Justificativa: Hipótese alternativa a ser considerada.
-Achados de imagem: Exames de imagem podem auxiliar no diagnóstico diferencial.
-
-=== HIPÓTESE 3 ===
-Nome: Condição Clínica Relacionada
-Confiança: 35%
-Sintomas correlatos: Apresentação atípica
-Justificativa: Possibilidade diagnóstica menos provável.
-Achados de imagem: Avaliação por imagem pode excluir esta hipótese.`;
-        }
-
+        // (removido em 21/09/2026: resposta simulada de IA — nunca mais mostrar diagnostico/receita inventados)
         // ============================================
         // FUNÇÃO PARA GERAR TRATAMENTO COM IA
         // ============================================
@@ -5909,8 +5858,7 @@ FORMATO DA RESPOSTA (OBRIGATÓRIO):
                 exibirTratamento(respostaIA);
             } catch (error) {
                 console.error('Erro ao gerar tratamento:', error);
-                const tratamentoMock = gerarTratamentoMock(diagnostico);
-                exibirTratamento(tratamentoMock);
+                alert('⚠️ A IA não conseguiu responder agora, então NENHUM tratamento/receita foi gerado.\n\nO sistema não mostra mais receitas de exemplo. Tente novamente em instantes ou escreva o tratamento manualmente.\n\nDetalhe: ' + (error && error.message ? error.message : error));
             } finally {
                 tratamentoLoading.style.display = 'none';
             }
@@ -5948,103 +5896,7 @@ Por favor, forneça APENAS:
 Use linguagem clara e profissional.`;
         }
 
-        function gerarTratamentoMock(diagnostico) {
-            if (diagnostico.nome.includes("Pneumonia")) {
-                return `=== TRATAMENTO ===
-1. Amoxicilina 500mg - 1 comprimido VO de 8/8h por 7-10 dias
-2. Paracetamol 750mg - 1 comprimido VO de 6/6h se febre >38°C
-3. Bromexina 8mg - 1 comprimido VO de 8/8h
-
-=== ORIENTAÇÕES ===
-- Hidratação: 2-3 litros de água/dia
-- Repouso relativo por 48-72h
-- Completar todo ciclo de antibiótico
-- Evitar mudanças bruscas de temperatura
-- Retornar em 72h se não houver melhora
-
-=== PRESCRIÇÃO ===
-Dr. ${currentDoctorName}
-
-Paciente: ${document.getElementById('consult-patient-name').textContent}
-
-1. Amoxicilina 500mg ............................................ 20 comprimidos
-   Tomar 1 comprimido via oral de 8 em 8 horas por 7 dias.
-
-2. Paracetamol 750mg ............................................ 15 comprimidos
-   Tomar 1 comprimido via oral de 6 em 6 horas se febre ou dor.
-
-3. Bromexina 8mg ............................................... 15 comprimidos
-   Tomar 1 comprimido via oral de 8 em 8 horas.
-
-Data: ${new Date().toLocaleDateString('pt-BR')}
-
-____________________________________
-Assinatura do Médico`;
-            } else if (diagnostico.nome.includes("DPOC") || diagnostico.nome.includes("Exacerbação")) {
-                return `=== TRATAMENTO ===
-1. Fenoterol + Ipratrópio (Atrovent) - 2 jatos aerossol de 6/6h
-2. Prednisona 40mg - 1 comprimido VO ao dia por 5 dias
-3. Amoxicilina + Clavulanato 875mg - 1 comprimido VO de 12/12h por 7 dias
-
-=== ORIENTAÇÕES ===
-- Realizar inalação com técnica correta (usar espaçador)
-- Monitorar saturação de oxigênio diariamente
-- Suspender tabagismo imediatamente
-- Procurar emergência se SatO2 <90% ou confusão mental
-- Retorno em 72h para reavaliação
-
-=== PRESCRIÇÃO ===
-Dr. ${currentDoctorName}
-
-Paciente: ${document.getElementById('consult-patient-name').textContent}
-
-1. Fenoterol + Ipratrópio (Atrovent) ........................ 1 frasco
-   Aplicar 2 jatos via inalatória de 6 em 6 horas.
-
-2. Prednisona 40mg .......................................... 5 comprimidos
-   Tomar 1 comprimido pela manhã por 5 dias.
-
-3. Amoxicilina + Clavulanato 875mg ......................... 14 comprimidos
-   Tomar 1 comprimido de 12 em 12 horas por 7 dias.
-
-Data: ${new Date().toLocaleDateString('pt-BR')}
-
-____________________________________
-Assinatura do Médico`;
-            } else {
-                return `=== TRATAMENTO ===
-1. Paracetamol 750mg - 1 comprimido VO de 6/6h se febre ou dor
-2. Dipirona 500mg - 20 gotas VO de 6/6h se dor intensa
-3. Loratadina 10mg - 1 comprimido VO ao dia
-
-=== ORIENTAÇÕES ===
-- Repouso relativo por 24-48h
-- Ingestão de líquidos: 2L/dia
-- Alimentação leve e fracionada
-- Não utilizar antibióticos sem prescrição
-- Retornar se febre persistir >72h
-
-=== PRESCRIÇÃO ===
-Dr. ${currentDoctorName}
-
-Paciente: ${document.getElementById('consult-patient-name').textContent}
-
-1. Paracetamol 750mg ........................................ 12 comprimidos
-   Tomar 1 comprimido via oral de 6 em 6 horas se febre ou dor.
-
-2. Dipirona 500mg (gotas) .................................. 1 frasco
-   Tomar 20 gotas via oral de 6 em 6 horas se dor intensa.
-
-3. Loratadina 10mg ......................................... 7 comprimidos
-   Tomar 1 comprimido via oral ao dia.
-
-Data: ${new Date().toLocaleDateString('pt-BR')}
-
-____________________________________
-Assinatura do Médico`;
-            }
-        }
-
+        // (removido em 21/09/2026: resposta simulada de IA — nunca mais mostrar diagnostico/receita inventados)
         function exibirTratamento(tratamento) {
             const treatmentSection = document.getElementById('treatment-section');
             const treatmentContent = document.getElementById('treatment-content');
@@ -6231,11 +6083,11 @@ Responda EXATAMENTE no formato especificado.`
                 exibirExamesSugeridos(currentDiagnoses);
             } catch (error) {
                 console.error('Erro ao gerar diagnóstico:', error);
-                currentDiagnoses = gerarDiagnosticosLocaisComImagens(dadosConsulta, analiseImagens);
+                currentDiagnoses = [];
                 exibirDiagnosticosCards(currentDiagnoses);
-                exibirExamesSugeridos(currentDiagnoses);
                 document.getElementById('response-time').innerHTML = 
-                    `<i class="fas fa-exclamation-triangle"></i> Usando análise local`;
+                    `<i class="fas fa-exclamation-triangle"></i> IA indisponível — nenhum diagnóstico foi gerado`;
+                alert('⚠️ A IA não conseguiu responder agora, então NENHUMA sugestão diagnóstica foi gerada.\n\nO sistema não mostra mais diagnósticos de exemplo. Tente novamente em instantes ou avise o administrador.\n\nDetalhe: ' + (error && error.message ? error.message : error));
             } finally {
                 mostrarLoading(false);
             }
@@ -6356,67 +6208,11 @@ Justificativa: [texto com evidências integrando clínica e imagem]
             } catch (e) {
                 console.error('Erro ao processar diagnóstico:', e);
             }
-            return diagnosticos.length > 0 ? diagnosticos : gerarDiagnosticosLocaisComImagens(dadosConsulta, '');
-        }
-
-        function gerarDiagnosticosLocaisComImagens(dados, analiseImagens) {
-            const sintomas = dados.sintomas || [];
-            const temperatura = dados.temperatura || '';
-            const exameFisico = dados.exameFisico || '';
-            const antecedentes = dados.antecedentes || '';
-            const temFebre = temperatura.includes('38') || temperatura.includes('39') || sintomas.includes('febre');
-            const temTosse = sintomas.includes('tosse');
-            const temExpectoracao = sintomas.includes('expectoracao');
-            const temDorToracica = sintomas.includes('dor-toracica');
-            const temTaquipneia = exameFisico.includes('taquipneico') || parseInt(dados.frequenciaRespiratoria) > 20;
-            const temEstertores = exameFisico.includes('estertores');
-            const temDPOC = antecedentes.toLowerCase().includes('dpoc') || antecedentes.toLowerCase().includes('tabagismo');
-            const temRaioX = analiseImagens.toLowerCase().includes('opacidade') || 
-                            analiseImagens.toLowerCase().includes('consolidação') ||
-                            analiseImagens.toLowerCase().includes('infiltrado');
-            const diagnosticos = [];
-            if (temFebre || temTosse) {
-                let achadosImagem = '';
-                if (temRaioX) {
-                    achadosImagem = 'Radiografia de tórax demonstra opacidade pulmonar em base direita com broncogramas aéreos, compatível com consolidação.';
-                } else {
-                    achadosImagem = 'Exame de imagem não disponível. Recomenda-se radiografia de tórax para confirmação.';
-                }
-                diagnosticos.push({
-                    id: 1,
-                    nome: "Pneumonia Adquirida na Comunidade",
-                    confianca: temEstertores || temDorToracica ? 85 : 70,
-                    sintomas: `${temFebre ? 'Febre, ' : ''}${temTosse ? 'tosse, ' : ''}${temExpectoracao ? 'expectoração, ' : ''}${temDorToracica ? 'dor torácica, ' : ''}taquipneia`.replace(/, $/, ''),
-                    achadosImagem: achadosImagem,
-                    justificativa: "Quadro clínico compatível com pneumonia bacteriana. Achados radiológicos confirmam consolidação pulmonar, corroborando a hipótese diagnóstica.",
-                    classeConfianca: 'high-confidence'
-                });
-            }
-            diagnosticos.push({
-                id: 2,
-                nome: temDPOC ? "Exacerbação Aguda de DPOC" : "Infecção Respiratória Aguda",
-                confianca: temDPOC ? 65 : 55,
-                sintomas: `${temTosse ? 'tosse, ' : ''}${temFebre ? 'febre, ' : ''}dispneia, produção de escarro`.replace(/, $/, ''),
-                achadosImagem: temRaioX ? 'Radiografia pode mostrar hiperinsuflação, sem consolidações evidentes.' : 'Exame de imagem não disponível.',
-                justificativa: temDPOC 
-                    ? "Paciente com histórico de DPOC apresenta exacerbação dos sintomas respiratórios."
-                    : "Síndrome respiratória aguda com tosse e febre.",
-                classeConfianca: 'medium-confidence'
-            });
-            diagnosticos.push({
-                id: 3,
-                nome: temDPOC ? "Insuficiência Cardíaca Descompensada" : "Síndrome Pós-Viral",
-                confianca: 40,
-                sintomas: "Dispneia, fadiga, desconforto respiratório",
-                achadosImagem: temRaioX ? 'Possível cardiomegalia e congestão pulmonar a serem avaliadas.' : 'Exame de imagem não disponível.',
-                justificativa: temDPOC
-                    ? "Considerar sobreposição de condições cardiorrespiratórias. Correlação com imagem e ecocardiograma recomendada."
-                    : "Sintomas residuais após quadro viral agudo.",
-                classeConfianca: 'low-confidence'
-            });
+            if (diagnosticos.length === 0) throw new Error('a IA respondeu em formato inesperado');
             return diagnosticos;
         }
 
+        // (removido em 21/09/2026: resposta simulada de IA — nunca mais mostrar diagnostico/receita inventados)
         function mostrarLoading(show) {
             document.getElementById('ai-loading').style.display = show ? 'flex' : 'none';
             document.getElementById('generate-diagnosis-btn').disabled = show;
