@@ -4571,27 +4571,31 @@ ${conversa}
 Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
 
             try {
-                const response = await fetch(MISTRAL_CONFIG.ENDPOINT, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...appAuthHeaders()
-                    },
-                    body: JSON.stringify({
-                        model: MISTRAL_CONFIG.MODEL_TEXT,
-                        messages: [{ role: 'user', content: prompt }],
-                        temperature: 0.2,
-                        max_tokens: 1024
-                    })
-                });
-
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(`Erro na API Mistral: ${response.status} - ${errText}`);
+                // Mistral primeiro; se ela falhar (limite de uso, chave...), tenta o Gemini pelo Worker
+                let texto = '';
+                let ultimoErro = null;
+                for (const alvo of [MISTRAL_CONFIG.ENDPOINT, PROXY_BASE_URL + '/gemini-chat']) {
+                    try {
+                        const response = await fetch(alvo, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', ...appAuthHeaders() },
+                            body: JSON.stringify({
+                                model: MISTRAL_CONFIG.MODEL_TEXT,
+                                messages: [{ role: 'user', content: prompt }],
+                                temperature: 0.2,
+                                max_tokens: 1024
+                            })
+                        });
+                        if (!response.ok) throw new Error('HTTP ' + response.status + ' em ' + alvo.replace(PROXY_BASE_URL, ''));
+                        const data = await response.json();
+                        texto = data?.choices?.[0]?.message?.content || '';
+                        if (texto) break;
+                    } catch (e) {
+                        ultimoErro = e;
+                        console.warn('IA de texto indisponivel (' + alvo.replace(PROXY_BASE_URL, '') + '):', e);
+                    }
                 }
-
-                const data = await response.json();
-                const texto = data?.choices?.[0]?.message?.content || '';
+                if (!texto && ultimoErro) throw new Error('A IA não respondeu (' + ultimoErro.message + ')');
                 if (!texto) throw new Error('A IA não retornou texto. Tente novamente.');
 
                 hdaField.value = texto.trim();
