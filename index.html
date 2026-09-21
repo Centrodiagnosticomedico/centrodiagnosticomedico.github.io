@@ -3273,6 +3273,7 @@
                 body: JSON.stringify({ usuario, senha })
             });
             const resultado = await response.json();
+            window._loginBloqueadoMin = resultado && resultado.bloqueado ? (resultado.minutos || 15) : 0;
             if (!resultado.ok) return false;
 
             const sessao = {
@@ -3400,7 +3401,7 @@
 
             const response = await fetch(PROXY_BASE_URL + '/auth/change-password', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_SHARED_SECRET },
+                headers: { 'Content-Type': 'application/json', ...appAuthHeaders() },
                 body: JSON.stringify({ sessionToken: sessao.sessionToken, senhaAtual, novaSenha })
             });
             const resultado = await response.json();
@@ -3621,7 +3622,7 @@
             const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
             const response = await fetch(PROXY_BASE_URL + '/auth/list-users', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_SHARED_SECRET },
+                headers: { 'Content-Type': 'application/json', ...appAuthHeaders() },
                 body: JSON.stringify({ sessionToken: sessao.sessionToken })
             });
             const resultado = await response.json();
@@ -3637,15 +3638,15 @@
                 const key = user.key;
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${user.usuario}</td>
+                    <td>${esc(user.usuario)}</td>
                     <td><span class="role-badge ${user.role === 'administrador' ? 'role-admin' : 'role-user'}">${user.role === 'administrador' ? 'Admin' : 'Usuário'}</span></td>
                     <td>${user.podeAdicionarUsuarios ? '✓' : '✗'}</td>
                     <td style="display:flex;gap:6px;align-items:center;">
                         ${key !== 'administrador' ?
-                            `<button class="delete-user-btn" onclick="excluirUsuario('${key}')">
+                            `<button class="delete-user-btn" onclick="excluirUsuario(${escJs(key)})">
                                 <i class="fas fa-trash"></i>
                             </button>
-                            <button class="delete-user-btn" title="Forçar logout" style="background:#e67e22;" onclick="forcerLogoutUsuario('${user.usuario}')">
+                            <button class="delete-user-btn" title="Forçar logout" style="background:#e67e22;" onclick="forcerLogoutUsuario(${escJs(user.usuario)})">
                                 <i class="fas fa-sign-out-alt"></i>
                             </button>` :
                             '<span style="color: #999;">Protegido</span>'}
@@ -3669,7 +3670,7 @@
             const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
             const response = await fetch(PROXY_BASE_URL + '/auth/add-user', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_SHARED_SECRET },
+                headers: { 'Content-Type': 'application/json', ...appAuthHeaders() },
                 body: JSON.stringify({
                     sessionToken: sessao.sessionToken,
                     usuario, senha, role, podeAdicionarUsuarios: podeAdicionar
@@ -3700,7 +3701,7 @@
                 const sessao = JSON.parse(localStorage.getItem('med_system_sessao') || '{}');
                 const response = await fetch(PROXY_BASE_URL + '/auth/delete-user', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_SHARED_SECRET },
+                    headers: { 'Content-Type': 'application/json', ...appAuthHeaders() },
                     body: JSON.stringify({ sessionToken: sessao.sessionToken, key })
                 });
                 const resultado = await response.json();
@@ -3790,7 +3791,11 @@
             if (logado) {
                 document.getElementById('login-error-message').style.display = 'none';
             } else {
-                document.getElementById('login-error-message').style.display = 'flex';
+                const msgEl = document.getElementById('login-error-message');
+                msgEl.innerHTML = window._loginBloqueadoMin
+                    ? '<i class="fas fa-lock"></i> Muitas tentativas. Tente novamente em ' + window._loginBloqueadoMin + ' minuto(s).'
+                    : '<i class="fas fa-exclamation-circle"></i> Usuário ou senha incorretos';
+                msgEl.style.display = 'flex';
             }
         });
 
@@ -4141,7 +4146,7 @@
                         : '';
                     return `<div class="log-summary-card">
                         <div class="log-user-name">
-                            <i class="fas fa-user-circle"></i> ${u} ${badgeAtivo}
+                            <i class="fas fa-user-circle"></i> ${esc(u)} ${badgeAtivo}
                         </div>
                         <div class="log-total-time">${formatarDuracaoSegundos(r.totalSegundos)}</div>
                         <div class="log-sessions-count">
@@ -4187,7 +4192,7 @@
                     : '';
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td><i class="fas fa-user" style="color:var(--primary-color); margin-right:6px;"></i><strong>${entry.usuario}</strong></td>
+                    <td><i class="fas fa-user" style="color:var(--primary-color); margin-right:6px;"></i><strong>${esc(entry.usuario)}</strong></td>
                     <td><i class="fas fa-calendar-check" style="color:var(--accent-color); margin-right:5px;"></i>${loginFormatado}</td>
                     <td>${logoutFormatado}${motivoBadge}</td>
                     <td>${duracaoStr}</td>`;
@@ -4229,6 +4234,28 @@
         // ============================================
         const PROXY_BASE_URL = 'https://jolly-frost-a572.diegoferreira1991.workers.dev';
         const APP_SHARED_SECRET = '7ctsqARGhasZjgbdGYYU9ZyNGqkDPUZn';
+
+        // Cabecalhos das chamadas ao Worker: segredo do app + token da sessao (o Worker exige a sessao em todas as rotas de IA).
+        function appAuthHeaders() {
+            let tok = '';
+            try { tok = JSON.parse(localStorage.getItem('med_system_sessao') || '{}').sessionToken || ''; } catch (e) { tok = ''; }
+            return { 'X-App-Secret': APP_SHARED_SECRET, 'X-Session-Token': tok };
+        }
+
+        // Escapa texto antes de colocar dentro de HTML (protege contra XSS: nome de paciente, usuario, texto da IA, noticias...).
+        function esc(v) {
+            return String(v == null ? '' : v)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        // Valor para usar DENTRO de onclick="funcao(...)": vira um texto JS entre aspas, ja escapado para o atributo HTML.
+        function escJs(v) {
+            return esc(JSON.stringify(String(v == null ? '' : v)));
+        }
+        // Link so se for http(s); qualquer outra coisa (javascript:, data:) vira vazio.
+        function urlSegura(u) {
+            return /^https?:\/\//i.test(String(u || '')) ? String(u) : '';
+        }
 
         // ============================================
         // CONFIGURAÇÃO DA API MANUS (via proxy)
@@ -4391,7 +4418,7 @@
                 const jobResponse = await fetch(SPEECHMATICS_JOBS_URL, {
                     method: 'POST',
                     headers: {
-                        'X-App-Secret': APP_SHARED_SECRET
+                        ...appAuthHeaders()
                     },
                     body: formData
                 });
@@ -4412,7 +4439,7 @@
                     await new Promise(r => setTimeout(r, 3000));
                     attempts++;
                     const statusResp = await fetch(`${SPEECHMATICS_JOBS_URL}/${jobId}`, {
-                        headers: { 'X-App-Secret': APP_SHARED_SECRET }
+                        headers: { ...appAuthHeaders() }
                     });
                     if (!statusResp.ok) continue;
                     const statusData = await statusResp.json();
@@ -4431,7 +4458,7 @@
                 // Passo 3: Buscar resultado
                 setTranscriptionStatus(true, 'Baixando transcrição...');
                 const transcriptResp = await fetch(`${SPEECHMATICS_JOBS_URL}/${jobId}/transcript?format=json-v2`, {
-                    headers: { 'X-App-Secret': APP_SHARED_SECRET }
+                    headers: { ...appAuthHeaders() }
                 });
 
                 if (!transcriptResp.ok) {
@@ -4548,7 +4575,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-App-Secret': APP_SHARED_SECRET
+                        ...appAuthHeaders()
                     },
                     body: JSON.stringify({
                         model: MISTRAL_CONFIG.MODEL_TEXT,
@@ -4836,10 +4863,10 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 const via = viaMatch ? viaMatch[1] : '';
 
                 return '<div style="margin-bottom:24px; padding-bottom:18px; border-bottom:1px dashed #ccc;">'
-                    + (via ? '<p style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">' + via + '</p>' : '')
-                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:#1a1a2e;">' + nomeDose + '</p>'
-                    + (posologia ? '<p style="font-size:14px; color:#333; margin-bottom:4px;">' + posologia + '</p>' : '')
-                    + (quantidade ? '<p style="font-size:13px; color:#555; font-style:italic;">' + quantidade + '</p>' : '')
+                    + (via ? '<p style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">' + esc(via) + '</p>' : '')
+                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:#1a1a2e;">' + esc(nomeDose) + '</p>'
+                    + (posologia ? '<p style="font-size:14px; color:#333; margin-bottom:4px;">' + esc(posologia) + '</p>' : '')
+                    + (quantidade ? '<p style="font-size:13px; color:#555; font-style:italic;">' + esc(quantidade) + '</p>' : '')
                     + '</div>';
             }).join('');
 
@@ -4852,21 +4879,21 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                         + '<h1 style="font-size:20px; color:#2c5aa0; margin:0;">RECEITA MÉDICA</h1>'
                     + '</div>'
                     + '<div style="text-align:right; font-size:12px; color:#444;">'
-                        + '<p style="margin:0;"><strong>' + currentDoctorName + '</strong></p>'
+                        + '<p style="margin:0;"><strong>' + esc(currentDoctorName) + '</strong></p>'
                         
                     + '</div>'
                 + '</div>'
                 + '<hr style="border:none; border-top:2px solid #2c5aa0; margin-bottom:12px;">'
                 + '<div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:14px;">'
-                    + '<p style="margin:0;"><strong>Paciente:</strong> ' + pacienteNome + '</p>'
+                    + '<p style="margin:0;"><strong>Paciente:</strong> ' + esc(pacienteNome) + '</p>'
                     + '<p style="margin:0;"><strong>Data:</strong> ' + dataFormatada + '</p>'
                 + '</div>'
                 + '<div style="display:flex; justify-content:space-between; margin-bottom:24px; font-size:13px; color:#444;">'
                     + '<p style="margin:0;"><strong>Idade:</strong> ' + (pacienteIdade !== null ? pacienteIdade + ' anos' : 'Não informada') + '</p>'
-                    + '<p style="margin:0;"><strong>Sexo:</strong> ' + (pacienteSexo || 'Não informado') + '</p>'
+                    + '<p style="margin:0;"><strong>Sexo:</strong> ' + esc(pacienteSexo || 'Não informado') + '</p>'
                 + '</div>'
                 + '<div style="min-height:280px;">'
-                    + (blocosHtml || '<p style="font-size:14px; color:#555;">' + tratamentoTexto.replace(/\n/g,'<br>') + '</p>')
+                    + (blocosHtml || '<p style="font-size:14px; color:#555;">' + esc(tratamentoTexto).replace(/\n/g,'<br>') + '</p>')
                 + '</div>'
                 + (totalComprimidosTratamento > 0
                     ? '<p style="font-size:14px; font-weight:700; color:#1a1a2e; margin-top:10px; padding-top:14px; border-top:2px solid #2c5aa0;">Total de comprimidos/unidades para o tratamento completo: ' + totalComprimidosTratamento + '</p>'
@@ -4874,7 +4901,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 + '<div style="margin-top:50px; text-align:right;">'
                     + '<div style="display:inline-block; text-align:center; min-width:240px;">'
                         + '<hr style="border:none; border-top:1px solid #333; margin-bottom:8px;">'
-                        + '<p style="font-size:15px; font-weight:700; margin:0;">' + currentDoctorName + '</p>'
+                        + '<p style="font-size:15px; font-weight:700; margin:0;">' + esc(currentDoctorName) + '</p>'
 
                         + '<p style="font-size:12px; color:#666; margin:0;">' + dataFormatada + '</p>'
                     + '</div>'
@@ -4942,10 +4969,10 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 const viaMatch = posologia.match(/\b(via oral|VO|IM|IV|subcutâneo|SC|tópico|inalatório|inalatorio|sublingual|retal|nasal)\b/i);
                 const via = viaMatch ? viaMatch[1] : '';
                 return '<div style="margin-bottom:24px; padding-bottom:18px; border-bottom:1px dashed #ccc;">'
-                    + (via ? '<p style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">' + via + '</p>' : '')
-                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:#1a1a2e;">' + nomeDose + '</p>'
-                    + (posologia ? '<p style="font-size:14px; color:#333; margin-bottom:4px;">' + posologia + '</p>' : '')
-                    + (quantidade ? '<p style="font-size:13px; color:#555; font-style:italic;">' + quantidade + '</p>' : '')
+                    + (via ? '<p style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">' + esc(via) + '</p>' : '')
+                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:#1a1a2e;">' + esc(nomeDose) + '</p>'
+                    + (posologia ? '<p style="font-size:14px; color:#333; margin-bottom:4px;">' + esc(posologia) + '</p>' : '')
+                    + (quantidade ? '<p style="font-size:13px; color:#555; font-style:italic;">' + esc(quantidade) + '</p>' : '')
                     + '</div>';
             }).join('');
 
@@ -4961,20 +4988,20 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                         + '<h1 style="font-size:20px; color:#2c5aa0; margin:0;">RECEITA MÉDICA</h1>'
                     + '</div>'
                     + '<div style="text-align:right; font-size:12px; color:#444;">'
-                        + '<p style="margin:0;"><strong>' + medicoNome + '</strong></p>'
+                        + '<p style="margin:0;"><strong>' + esc(medicoNome) + '</strong></p>'
                     + '</div>'
                 + '</div>'
                 + '<hr style="border:none; border-top:2px solid #2c5aa0; margin-bottom:12px;">'
                 + '<div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:14px;">'
-                    + '<p style="margin:0;"><strong>Paciente:</strong> ' + pacienteNome + '</p>'
+                    + '<p style="margin:0;"><strong>Paciente:</strong> ' + esc(pacienteNome) + '</p>'
                     + '<p style="margin:0;"><strong>Data:</strong> ' + dataFormatada + '</p>'
                 + '</div>'
                 + '<div style="display:flex; justify-content:space-between; margin-bottom:24px; font-size:13px; color:#444;">'
                     + '<p style="margin:0;"><strong>Idade:</strong> ' + (pacienteIdade !== null ? pacienteIdade + ' anos' : 'Não informada') + '</p>'
-                    + '<p style="margin:0;"><strong>Sexo:</strong> ' + (pacienteSexo || 'Não informado') + '</p>'
+                    + '<p style="margin:0;"><strong>Sexo:</strong> ' + esc(pacienteSexo || 'Não informado') + '</p>'
                 + '</div>'
                 + '<div style="min-height:280px;">'
-                    + (blocosHtml || '<p style="font-size:14px; color:#555;">' + tratamentoTexto.replace(/\n/g,'<br>') + '</p>')
+                    + (blocosHtml || '<p style="font-size:14px; color:#555;">' + esc(tratamentoTexto).replace(/\n/g,'<br>') + '</p>')
                 + '</div>'
                 + (totalComprimidosTratamento > 0
                     ? '<p style="font-size:14px; font-weight:700; color:#1a1a2e; margin-top:10px; padding-top:14px; border-top:2px solid #2c5aa0;">Total de comprimidos/unidades para o tratamento completo: ' + totalComprimidosTratamento + '</p>'
@@ -4982,7 +5009,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 + '<div style="margin-top:50px; text-align:right;">'
                     + '<div style="display:inline-block; text-align:center; min-width:240px;">'
                         + '<hr style="border:none; border-top:1px solid #333; margin-bottom:8px;">'
-                        + '<p style="font-size:15px; font-weight:700; margin:0;">' + medicoNome + '</p>'
+                        + '<p style="font-size:15px; font-weight:700; margin:0;">' + esc(medicoNome) + '</p>'
                         + '<p style="font-size:12px; color:#666; margin:0;">' + dataFormatada + '</p>'
                     + '</div>'
                 + '</div>'
@@ -5003,7 +5030,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-App-Secret': APP_SHARED_SECRET
+                        ...appAuthHeaders()
                     },
                     body: JSON.stringify({
                         mimeType,
@@ -5061,24 +5088,24 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     
                     if (file.type.startsWith('image/')) {
                         previewItem.innerHTML = `
-                            <button class="remove-file-btn" onclick="removeImage('${file.name}')">
+                            <button class="remove-file-btn" onclick="removeImage(${escJs(file.name)})">
                                 <i class="fas fa-times"></i>
                             </button>
-                            <img src="${e.target.result}" alt="Preview">
-                            <div class="file-name">${file.name}</div>
+                            <img src="${esc(e.target.result)}" alt="Preview">
+                            <div class="file-name">${esc(file.name)}</div>
                             <span class="image-analysis-badge">
                                 <i class="fas fa-microscope"></i> IA analisou esta imagem
                             </span>
                         `;
                     } else {
                         previewItem.innerHTML = `
-                            <button class="remove-file-btn" onclick="removeImage('${file.name}')">
+                            <button class="remove-file-btn" onclick="removeImage(${escJs(file.name)})">
                                 <i class="fas fa-times"></i>
                             </button>
                             <div style="height: 120px; display: flex; align-items: center; justify-content: center; background: #f8f9fa;">
                                 <i class="fas fa-file-pdf" style="font-size: 48px; color: #e74c3c;"></i>
                             </div>
-                            <div class="file-name">${file.name}</div>
+                            <div class="file-name">${esc(file.name)}</div>
                             <span class="image-analysis-badge">
                                 <i class="fas fa-file-alt"></i> IA analisou este documento
                             </span>
@@ -5280,8 +5307,8 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     const item = document.createElement('span');
                     item.className = 'selected-exam-item';
                     item.innerHTML = `
-                        <i class="fas fa-check-circle"></i> ${exame}
-                        <button class="remove-exam-btn" onclick="removeSelectedExam('${exame}')">
+                        <i class="fas fa-check-circle"></i> ${esc(exame)}
+                        <button class="remove-exam-btn" onclick="removeSelectedExam(${escJs(exame)})">
                             <i class="fas fa-times"></i>
                         </button>
                     `;
@@ -5312,8 +5339,8 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     const item = document.createElement('span');
                     item.className = 'selected-exam-item';
                     item.innerHTML = `
-                        <i class="fas fa-check-circle"></i> ${exame}
-                        <button class="remove-exam-btn" onclick="removeSelectedExam('${exame}')">
+                        <i class="fas fa-check-circle"></i> ${esc(exame)}
+                        <button class="remove-exam-btn" onclick="removeSelectedExam(${escJs(exame)})">
                             <i class="fas fa-times"></i>
                         </button>
                     `;
@@ -5368,9 +5395,9 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 }
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${paciente.nome}</td>
+                    <td>${esc(paciente.nome)}</td>
                     <td>${formatarData(paciente.dataNascimento)} (${idade} anos)</td>
-                    <td>${paciente.telefone || 'Não informado'}</td>
+                    <td>${esc(paciente.telefone || 'Não informado')}</td>
                     <td>${ultimaConsulta}</td>
                     <td>${totalConsultas}</td>
                     <td>
@@ -5413,10 +5440,10 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 const consultasPaciente = consultas.filter(c => c.pacienteId === paciente.id).length;
                 html += `
                     <div class="card" style="cursor: pointer; padding: 15px;" onclick="selecionarPacienteConsulta(${paciente.id})">
-                        <h4>${paciente.nome}</h4>
-                        <p><strong>CPF:</strong> ${paciente.cpf}</p>
+                        <h4>${esc(paciente.nome)}</h4>
+                        <p><strong>CPF:</strong> ${esc(paciente.cpf)}</p>
                         <p><strong>Idade:</strong> ${idade} anos</p>
-                        <p><strong>Telefone:</strong> ${paciente.telefone || 'Não informado'}</p>
+                        <p><strong>Telefone:</strong> ${esc(paciente.telefone || 'Não informado')}</p>
                         <p><strong>Consultas anteriores:</strong> ${consultasPaciente}</p>
                         <button class="btn btn-primary" style="margin-top: 10px;">
                             <i class="fas fa-stethoscope"></i> Selecionar
@@ -5512,16 +5539,16 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                         <h1><i class="fas fa-file-medical"></i> Detalhes da Consulta</h1>
                         <div class="consultation-meta">
                             <span><i class="fas fa-calendar"></i> ${formatarDataHora(consulta.data)}</span>
-                            <span><i class="fas fa-user-md"></i> Médico: ${consulta.medico}</span>
+                            <span><i class="fas fa-user-md"></i> Médico: ${esc(consulta.medico)}</span>
                             <span><i class="fas fa-tag"></i> ID: #${consulta.id}</span>
                         </div>
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
                         <div>
-                            <h2 style="color: var(--primary-color); font-size: 2rem;">${paciente.nome}</h2>
+                            <h2 style="color: var(--primary-color); font-size: 2rem;">${esc(paciente.nome)}</h2>
                             <p style="color: var(--gray-color);">
-                                <i class="fas fa-id-card"></i> CPF: ${paciente.cpf} | 
-                                <i class="fas fa-venus-mars"></i> ${paciente.sexo || 'Não informado'} | 
+                                <i class="fas fa-id-card"></i> CPF: ${esc(paciente.cpf)} | 
+                                <i class="fas fa-venus-mars"></i> ${esc(paciente.sexo || 'Não informado')} | 
                                 <i class="fas fa-calendar-alt"></i> ${idadeDetalhada}
                             </p>
                         </div>
@@ -5529,40 +5556,40 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     <div class="detail-section">
                         <h3><i class="fas fa-comment"></i> Queixa Principal</h3>
                         <div class="detail-content">
-                            ${consulta.queixaPrincipal}
+                            ${esc(consulta.queixaPrincipal)}
                         </div>
                     </div>
                     ${consulta.historiaDoencaHda ? `
                     <div class="detail-section">
                         <h3><i class="fas fa-notes-medical"></i> História da Doença Atual (HDA)</h3>
                         <div class="detail-content" style="white-space: pre-line;">
-                            ${consulta.historiaDoencaHda}
+                            ${esc(consulta.historiaDoencaHda)}
                         </div>
                     </div>` : ''}
                     ${consulta.historiaDoenca ? `
                     <div class="detail-section">
                         <h3><i class="fas fa-microphone-alt"></i> Conversa com o Paciente</h3>
                         <div class="detail-content" style="white-space: pre-line; font-size: 0.9rem; color: #555;">
-                            ${consulta.historiaDoenca}
+                            ${esc(consulta.historiaDoenca)}
                         </div>
                     </div>` : ''}
                     <div class="detail-section">
                         <h3><i class="fas fa-stethoscope"></i> Diagnóstico</h3>
                         <div class="detail-content" style="background: #e3f2fd; font-size: 1.1rem; font-weight: 600; color: var(--primary-color);">
-                            ${consulta.diagnostico}
+                            ${esc(consulta.diagnostico)}
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="detail-section" style="flex: 1;">
                             <h3><i class="fas fa-notes-medical"></i> Tratamento</h3>
                             <div class="detail-content" style="white-space: pre-line;">
-                                ${consulta.tratamento}
+                                ${esc(consulta.tratamento)}
                             </div>
                         </div>
                         <div class="detail-section" style="flex: 1;">
                             <h3><i class="fas fa-file-prescription"></i> Prescrição</h3>
                             <div class="detail-content prescription-detail" style="white-space: pre-line; font-family: 'Courier New', monospace;">
-                                ${consulta.prescricao || 'Nenhuma prescrição'}
+                                ${esc(consulta.prescricao || 'Nenhuma prescrição')}
                             </div>
                         </div>
                     </div>
@@ -5570,7 +5597,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     <div class="detail-section">
                         <h3><i class="fas fa-clipboard"></i> Observações</h3>
                         <div class="detail-content">
-                            ${consulta.observacoes}
+                            ${esc(consulta.observacoes)}
                         </div>
                     </div>
                     ` : ''}
@@ -5703,7 +5730,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-App-Secret': APP_SHARED_SECRET
+                            ...appAuthHeaders()
                         },
                         body: JSON.stringify({
                             model: 'gemini-2.5-flash',
@@ -5733,7 +5760,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             const apiStatus = document.getElementById('apiStatus');
             if (!apiStatus) return;
             apiStatus.className = 'api-status ' + status;
-            apiStatus.innerHTML = `<i class="fas fa-plug"></i> <span>${message}</span>`;
+            apiStatus.innerHTML = `<i class="fas fa-plug"></i> <span>${esc(message)}</span>`;
         }
 
         async function testarIA() {
@@ -5766,7 +5793,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-App-Secret': APP_SHARED_SECRET
+                            ...appAuthHeaders()
                         },
                         body: JSON.stringify({
                             model: 'gemini-2.5-flash',
@@ -6039,7 +6066,7 @@ Assinatura do Médico`;
                 .replace(/\[Data\][^\n]*/gi, '')
                 .trim();
 
-            treatmentContent.innerHTML = textoLimpo.replace(/\n/g, '<br>');
+            treatmentContent.innerHTML = esc(textoLimpo).replace(/\n/g, '<br>');
             tratamentoTextarea.value = textoLimpo;
 
             // Sincronizar edições do contenteditable com o textarea oculto
@@ -6407,7 +6434,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 card.dataset.diagnosticoId = diagnostico.id;
                 card.innerHTML = `
                     <div class="diagnosis-confidence-badge">Confiança: ${diagnostico.confianca}%</div>
-                    <h3 style="color: var(--primary-color); margin-bottom: 15px; font-size: 1.3rem;">${diagnostico.nome}</h3>
+                    <h3 style="color: var(--primary-color); margin-bottom: 15px; font-size: 1.3rem;">${esc(diagnostico.nome)}</h3>
                     <div class="confidence-bar-container">
                         <div class="confidence-bar">
                             <div class="confidence-fill" style="width: ${diagnostico.confianca}%;"></div>
@@ -6415,17 +6442,17 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                     </div>
                     <div style="margin: 15px 0; padding: 10px; background: #f0f8ff; border-radius: 5px;">
                         <strong><i class="fas fa-notes-medical"></i> Sintomas correlatos:</strong>
-                        <p style="margin-top: 8px;">${diagnostico.sintomas}</p>
+                        <p style="margin-top: 8px;">${esc(diagnostico.sintomas)}</p>
                     </div>
                     ${diagnostico.achadosImagem ? `
                     <div style="margin: 15px 0; padding: 10px; background: #fff3e0; border-radius: 5px; border-left: 3px solid var(--accent-color);">
                         <strong><i class="fas fa-x-ray"></i> Achados de imagem:</strong>
-                        <p style="margin-top: 8px; font-style: italic;">${diagnostico.achadosImagem}</p>
+                        <p style="margin-top: 8px; font-style: italic;">${esc(diagnostico.achadosImagem)}</p>
                     </div>
                     ` : ''}
                     <div style="margin: 15px 0;">
                         <strong><i class="fas fa-stethoscope"></i> Justificativa:</strong>
-                        <p style="margin-top: 8px; font-style: italic;">${diagnostico.justificativa}</p>
+                        <p style="margin-top: 8px; font-style: italic;">${esc(diagnostico.justificativa)}</p>
                     </div>
                     <button class="apply-diagnosis-btn" onclick="aplicarDiagnostico(${diagnostico.id})">
                         <i class="fas fa-check-circle"></i> Selecionar Diagnóstico
@@ -6524,12 +6551,12 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                         <div class="patient-avatar-large">
                             <i class="fas fa-user-circle"></i>
                         </div>
-                        <h1 style="font-size: 2.5rem; margin-bottom: 10px; color: white;">${paciente.nome}</h1>
+                        <h1 style="font-size: 2.5rem; margin-bottom: 10px; color: white;">${esc(paciente.nome)}</h1>
                         <div style="margin-bottom: 20px;">
-                            <span class="patient-badge"><i class="fas fa-id-card"></i> CPF: ${paciente.cpf}</span>
+                            <span class="patient-badge"><i class="fas fa-id-card"></i> CPF: ${esc(paciente.cpf)}</span>
                             <span class="patient-badge"><i class="fas fa-calendar-alt"></i> ${idadeDetalhada}</span>
-                            <span class="patient-badge"><i class="fas fa-venus-mars"></i> ${paciente.sexo || 'Não informado'}</span>
-                            <span class="patient-badge"><i class="fas fa-phone"></i> ${paciente.telefone || 'Não informado'}</span>
+                            <span class="patient-badge"><i class="fas fa-venus-mars"></i> ${esc(paciente.sexo || 'Não informado')}</span>
+                            <span class="patient-badge"><i class="fas fa-phone"></i> ${esc(paciente.telefone || 'Não informado')}</span>
                         </div>
                         
                         <div style="display: flex; gap: 15px; margin-bottom: 30px;">
@@ -6579,15 +6606,15 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                             </div>
                             <div class="info-item-modern">
                                 <div class="info-label"><i class="fas fa-envelope"></i> E-mail</div>
-                                <div class="info-value">${paciente.email || 'Não informado'}</div>
+                                <div class="info-value">${esc(paciente.email || 'Não informado')}</div>
                             </div>
                             <div class="info-item-modern">
                                 <div class="info-label"><i class="fas fa-map-marker-alt"></i> Endereço</div>
-                                <div class="info-value">${paciente.endereco || 'Não informado'}, ${paciente.cidade || ''} ${paciente.estado || ''}</div>
+                                <div class="info-value">${esc(paciente.endereco || 'Não informado')}, ${esc(paciente.cidade || '')} ${esc(paciente.estado || '')}</div>
                             </div>
                             <div class="info-item-modern">
                                 <div class="info-label"><i class="fas fa-exclamation-triangle"></i> Alergias</div>
-                                <div class="info-value">${paciente.historicoMedico || 'Nenhuma registrada'}</div>
+                                <div class="info-value">${esc(paciente.historicoMedico || 'Nenhuma registrada')}</div>
                             </div>
                         </div>
                         
@@ -6613,8 +6640,8 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                                 ${consultasPaciente.slice(0, 5).map(consulta => `
                                     <div class="timeline-item-modern">
                                         <div class="timeline-date">${formatarDataHora(consulta.data)}</div>
-                                        <div class="timeline-title" style="font-size: 1.1rem;">${consulta.diagnostico}</div>
-                                        <p style="margin-bottom: 5px;"><i class="fas fa-comment-medical"></i> ${consulta.queixaPrincipal.substring(0, 60)}${consulta.queixaPrincipal.length > 60 ? '...' : ''}</p>
+                                        <div class="timeline-title" style="font-size: 1.1rem;">${esc(consulta.diagnostico)}</div>
+                                        <p style="margin-bottom: 5px;"><i class="fas fa-comment-medical"></i> ${esc(consulta.queixaPrincipal.substring(0, 60))}${consulta.queixaPrincipal.length > 60 ? '...' : ''}</p>
                                         <div style="display: flex; gap: 5px; margin-top: 10px;">
                                             <button class="btn btn-primary" style="padding: 5px 15px; font-size: 0.9rem;" onclick="verDetalhesConsulta(${consulta.id})">
                                                 <i class="fas fa-eye"></i> Ver
@@ -6844,9 +6871,9 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 }
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${paciente.nome}</td>
+                    <td>${esc(paciente.nome)}</td>
                     <td>${formatarData(paciente.dataNascimento)} (${idade} anos)</td>
-                    <td>${paciente.telefone || 'Não informado'}</td>
+                    <td>${esc(paciente.telefone || 'Não informado')}</td>
                     <td>${ultimaConsulta}</td>
                     <td>${totalConsultas}</td>
                     <td>
@@ -6876,9 +6903,9 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${formatarDataHora(consulta.data)}</td>
-                    <td>${paciente ? paciente.nome : 'Paciente não encontrado'}</td>
-                    <td>${consulta.queixaPrincipal.substring(0, 50)}${consulta.queixaPrincipal.length > 50 ? '...' : ''}</td>
-                    <td>${consulta.diagnostico}</td>
+                    <td>${esc(paciente ? paciente.nome : 'Paciente não encontrado')}</td>
+                    <td>${esc(consulta.queixaPrincipal.substring(0, 50))}${consulta.queixaPrincipal.length > 50 ? '...' : ''}</td>
+                    <td>${esc(consulta.diagnostico)}</td>
                     <td>
                         <div class="action-buttons">
                             <button class="action-btn view" onclick="verDetalhesConsulta(${consulta.id})">
@@ -6932,10 +6959,10 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${formatarDataHora(consulta.data)}</td>
-                    <td>${paciente ? paciente.nome : 'Paciente não encontrado'}</td>
-                    <td>${consulta.queixaPrincipal.substring(0, 50)}${consulta.queixaPrincipal.length > 50 ? '...' : ''}</td>
-                    <td>${consulta.diagnostico}</td>
-                    <td>${consulta.medico}</td>
+                    <td>${esc(paciente ? paciente.nome : 'Paciente não encontrado')}</td>
+                    <td>${esc(consulta.queixaPrincipal.substring(0, 50))}${consulta.queixaPrincipal.length > 50 ? '...' : ''}</td>
+                    <td>${esc(consulta.diagnostico)}</td>
+                    <td>${esc(consulta.medico)}</td>
                     <td>
                         <div class="action-buttons">
                             <button class="action-btn view" onclick="verDetalhesConsulta(${consulta.id})">
@@ -6980,9 +7007,9 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                 }
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${paciente.nome}</td>
+                    <td>${esc(paciente.nome)}</td>
                     <td>${formatarData(paciente.dataNascimento)} (${idade} anos)</td>
-                    <td>${paciente.telefone || 'Não informado'}</td>
+                    <td>${esc(paciente.telefone || 'Não informado')}</td>
                     <td>${ultimaConsulta}</td>
                     <td>${totalConsultas}</td>
                     <td>
@@ -7413,7 +7440,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
 
             try {
                 const response = await fetch(PROXY_BASE_URL + '/who-news', {
-                    headers: { 'X-App-Secret': APP_SHARED_SECRET }
+                    headers: { ...appAuthHeaders() }
                 });
                 if (!response.ok) throw new Error('Falha ao buscar notícias da OMS');
                 const dados = await response.json();
@@ -7425,12 +7452,12 @@ Justificativa: [texto com evidências integrando clínica e imagem]
 
                 container.innerHTML = escolhidas.map(n =>
                     '<div class="news-item">'
-                        + '<div class="news-date"><i class="far fa-clock"></i> ' + formatarDataNoticia(n.data) + '</div>'
-                        + '<div class="news-title">' + (n.link
-                            ? '<a href="' + n.link + '" target="_blank" rel="noopener" style="color:inherit; text-decoration:none;">' + n.titulo + ' <i class="fas fa-external-link-alt" style="font-size:0.75em;"></i></a>'
-                            : n.titulo)
+                        + '<div class="news-date"><i class="far fa-clock"></i> ' + esc(formatarDataNoticia(n.data)) + '</div>'
+                        + '<div class="news-title">' + (urlSegura(n.link)
+                            ? '<a href="' + esc(urlSegura(n.link)) + '" target="_blank" rel="noopener noreferrer" style="color:inherit; text-decoration:none;">' + esc(n.titulo) + ' <i class="fas fa-external-link-alt" style="font-size:0.75em;"></i></a>'
+                            : esc(n.titulo))
                         + '</div>'
-                        + '<div class="news-summary">' + n.resumo + '</div>'
+                        + '<div class="news-summary">' + esc(n.resumo) + '</div>'
                     + '</div>'
                 ).join('');
 
