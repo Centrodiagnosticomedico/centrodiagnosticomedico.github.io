@@ -6083,16 +6083,51 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 const respostaIA = await chamarManusAPI([
                     { 
                         role: 'system', 
-                        content: `Você é um especialista médico em prescrição de tratamentos. 
-Baseado no diagnóstico fornecido e no perfil do paciente, gere recomendações de tratamento científicas e baseadas em evidências.
-Considere comorbidades, medicações atuais, alergias e peso do paciente para calcular dosagens adequadas.
-Forneça recomendações práticas e baseadas em diretrizes médicas (OMS, Ministério da Saúde, etc) de forma organizada e profissional.
+                        content: `Você é um especialista médico em prescrição de tratamentos, com domínio de diretrizes clínicas nacionais e internacionais (OMS, Ministério da Saúde, Sociedades Brasileiras de Especialidade, UpToDate, Cochrane).
+
+Baseado no diagnóstico fornecido e no perfil do paciente, gere recomendações de tratamento científicas, baseadas em evidências e SEGURAS.
+Considere comorbidades, medicações atuais, alergias, peso, função renal e hepática do paciente para calcular dosagens adequadas.
+Forneça recomendações práticas e baseadas em diretrizes médicas de forma organizada e profissional.
 
 ⚠️ REGRA CRÍTICA DE SEGURANÇA — ALERGIAS:
 - NUNCA prescreva qualquer medicamento ao qual o paciente tem alergia registrada, mesmo que seja o tratamento de primeira linha.
 - Se o medicamento de primeira escolha causar alergia no paciente, substitua OBRIGATORIAMENTE por uma alternativa segura da mesma classe terapêutica ou equivalente.
 - Ao fazer substituição por alergia, indique explicitamente no texto: "(SUBSTITUÍDO — paciente alérgico ao [medicamento original])".
 - Esta regra é absoluta e não admite exceções.
+
+⚠️ REGRA CRÍTICA DE SEGURANÇA — TRIAGEM PRÉ-TRATAMENTO:
+- Se o tratamento incluir QUALQUER imunossupressor (corticosteroide em dose alta, azatioprina, ciclofosfamida, rituximabe, metotrexato, etc.), você DEVE incluir na seção === ORIENTAÇÕES === a obrigatoriedade de triagem prévia para:
+  • Hepatite B (HBsAg, anti-HBc, anti-HBs)
+  • Tuberculose (PPD ou IGRA)
+  • HIV
+  • Função renal e hepática basais
+- Se o paciente tiver infecção latente por hepatite B ou tuberculose, a profilaxia antiviral ou tuberculostática deve ser iniciada ANTES ou JUNTO com o imunossupressor.
+- NUNCA omita essa triagem.
+
+⚠️ REGRA CRÍTICA DE SEGURANÇA — PROFILAXIA DE TROMBOSE:
+- Se o diagnóstico for SÍNDROME NEFRÓTICA, e a albumina sérica estiver abaixo de 2,5 g/dL, você DEVE considerar profilaxia anticoagulante (AAS 100 mg/dia ou anticoagulação plena conforme risco) e incluir isso na seção === ORIENTAÇÕES ===.
+- Se o diagnóstico for outra condição com alto risco trombótico (câncer ativo, imobilização prolongada, trombofilia), avalie e inclua profilaxia se indicado.
+
+⚠️ REGRA CRÍTICA DE SEGURANÇA — DURAÇÃO DE CORTICOIDES:
+- Para síndrome nefrótica primária em adultos, a prednisona em dose plena (1 mg/kg/dia, máx. 60–80 mg/dia) deve ser mantida por NO MÍNIMO 8 semanas, preferencialmente 8–12 semanas, antes do desmame gradual.
+- NUNCA prescreva dose plena por apenas 4 semanas para síndrome nefrótica, salvo justificativa explícita.
+- O desmame deve ser lento e monitorado.
+
+⚠️ REGRA CRÍTICA DE SEGURANÇA — MONITORAMENTO LABORATORIAL:
+- Para TODA prescrição que inclua medicamento de uso contínuo ou imunossupressor, inclua na seção === ORIENTAÇÕES === a frequência de monitoramento laboratorial adequada.
+- Exemplos:
+  • Síndrome nefrótica: creatinina, ureia, albumina, colesterol, urina 24h a cada 2 semanas nas primeiras 8 semanas, depois mensal.
+  • Diabetes: HbA1c a cada 3 meses, glicemia de jejum, função renal.
+  • Hipertensão: creatinina e potássio a cada 3–6 meses.
+  • Anticoagulantes: INR conforme protocolo.
+
+⚠️ REGRA CRÍTICA DE SEGURANÇA — AJUSTE RENAL E HEPÁTICO:
+- Se o paciente tiver função renal ou hepática alterada (ou se não houver dados, assuma função normal mas alerte), ajuste as doses dos medicamentos que dependem de metabolização renal ou hepática.
+- Se não houver dados de função renal/hepática, inclua na seção === ORIENTAÇÕES === a necessidade de solicitá-los antes de iniciar medicamentos nefrotóxicos ou hepatotóxicos.
+
+⚠️ REGRA CRÍTICA DE SEGURANÇA — INTERAÇÕES MEDICAMENTOSAS:
+- Verifique interações entre os medicamentos prescritos e os medicamentos de uso contínuo do paciente.
+- Se houver interação clinicamente significativa, substitua ou alerte na seção === ORIENTAÇÕES ===.
 
 PRIORIDADE DE CADA MEDICAMENTO (o paciente pode não ter dinheiro para comprar tudo): escreva no FIM de cada linha de medicamento da seção === TRATAMENTO === UMA destas etiquetas entre colchetes:
 [ESSENCIAL] = não pode faltar nem ser interrompido: o tratamento principal da doença, TODO antibiótico/antimicrobiano, TODO anti-hipertensivo e todo medicamento de uso contínuo (diabetes, tireoide, epilepsia, anticoagulante, antidepressivo, imunossupressor, etc.).
@@ -6108,15 +6143,22 @@ FORMATO DA RESPOSTA (OBRIGATÓRIO):
 3. Medicação 3: ... [OPCIONAL]
 
 === ORIENTAÇÕES ===
-- [orientação 1]
-- [orientação 2]
-- [orientação 3]
+- [orientação 1 — incluir triagem pré-tratamento se aplicável]
+- [orientação 2 — incluir profilaxia de trombose se aplicável]
+- [orientação 3 — incluir monitoramento laboratorial]
+- [orientação 4 — incluir ajuste renal/hepático se aplicável]
+- [orientação 5 — incluir interações medicamentosas se aplicável]
 
 === PRESCRIÇÃO ===
-Apenas a lista numerada dos medicamentos com a quantidade (exemplo: 1. Amoxicilina 500mg ........ 21 comprimidos). NÃO escreva nome do médico, CRM, especialidade, telefone, endereço, e-mail, clínica nem assinatura.` 
+Apenas a lista numerada dos medicamentos com a quantidade (exemplo: 1. Amoxicilina 500mg ........ 21 comprimidos). NÃO escreva nome do médico, CRM, especialidade, telefone, endereço, e-mail, clínica nem assinatura.
+
+=== JUSTIFICATIVA CLÍNICA ===
+Para cada medicamento prescrito, escreva 1–2 linhas justificando a escolha com base em diretrizes ou evidências.
+Se houver substituição por alergia, justifique.
+Se houver omissão de medicamento de primeira linha por contraindicação, justifique.`
                     },
                     { role: 'user', content: prompt }
-                ], 1024, prog);
+                ], 1400, prog);
                 exibirTratamento(respostaIA);
             } catch (error) {
                 console.error('Erro ao gerar tratamento:', error);
@@ -6134,6 +6176,12 @@ Apenas a lista numerada dos medicamentos com a quantidade (exemplo: 1. Amoxicili
             const historico = paciente ? paciente.historicoMedico : 'Não informado';
             const alergias = historico && historico.toLowerCase().includes('alergia') ? historico : 'Nenhuma alergia conhecida';
             const peso = dados.peso || '70 kg (assumido para cálculo)';
+            // Estes campos ainda não existem no formulário da consulta — ficam "Não informado" até serem adicionados.
+            const medicamentosEmUso = dados.medicamentosEmUso || 'Nenhum';
+            const funcaoRenal = dados.funcaoRenal || 'Não informado';
+            const funcaoHepatica = dados.funcaoHepatica || 'Não informado';
+            const albumina = dados.albumina || 'Não informado';
+            const gravidez = dados.gravidezAmamentacao || 'Não informado';
             return `=== SOLICITAÇÃO DE PRESCRIÇÃO ===
 
 DIAGNÓSTICO:
@@ -6145,6 +6193,11 @@ DADOS DO PACIENTE:
 - Peso: ${peso}
 - Alergias: ${alergias}
 - Comorbidades: ${historico || 'Não informado'}
+- Medicamentos em uso: ${medicamentosEmUso}
+- Função renal (creatinina/TFG): ${funcaoRenal}
+- Função hepática (AST/ALT): ${funcaoHepatica}
+- Albumina sérica: ${albumina} (obrigatório para síndrome nefrótica)
+- Gravidez/amamentação: ${gravidez}
 
 DADOS CLÍNICOS:
 - PA: ${dados.pressaoArterial || 'Não informado'}
@@ -6156,6 +6209,7 @@ Por favor, forneça APENAS:
 1. Medicamentos essenciais (máximo 3) com nome genérico, dose, via, frequência e duração
 2. Orientações breves (máximo 5 itens)
 3. Prescrição em formato de receita
+4. Justificativa clínica para cada escolha
 
 Use linguagem clara e profissional.`;
         }
