@@ -5016,10 +5016,11 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 const matchDias = posologia.match(/por\s+(?:at[eé]\s+)?(\d+)\s+dias?/i);
                 const matchH1  = posologia.match(/de\s+(\d+)\/(\d+)\s*h/i);
                 const matchH2  = posologia.match(/a cada\s+(\d+)\s*horas?/i);
+                const matchH3  = posologia.match(/de\s+(\d+)\s+em\s+(\d+)\s*horas?/i);          // ex.: "de 12 em 12 horas"
                 const matchVez = posologia.match(/(\d+)\s*(?:vez|vezes)\s*ao\s*dia/i);
                 const matchMaxDia = posologia.match(/m[aá]ximo\s+(?:de\s+)?(\d+)\s*(?:comprimidos?|c[aá]psulas?|tabletes?|unidades?|doses?)?\s*(?:ao\s*dia|por\s*dia)/i);
-                const matchQtd = posologia.match(/(\d+)\s+(?:comprimidos?|c[aá]psulas?|tabletes?|unidades?|gotas?)/i);
-                const temFrequencia = matchH1 || matchH2 || matchVez;
+                const matchQtd = posologia.match(/(\d+)\s+(?:comprimidos?|c[aá]psulas?|tabletes?|unidades?|gotas?)/i);
+                const temFrequencia = matchH1 || matchH2 || matchH3 || matchVez;
                 // PRN ("se necessario") sem um maximo diario informado: nao da pra saber quantas doses o paciente vai usar
                 const semComoCalcular = semNecessario && !matchMaxDia && !temFrequencia;
                 if (matchDias && !semComoCalcular) {
@@ -5027,6 +5028,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     let tomadas = 1;                              // sem frequencia explicita = assume 1x/dia (ex.: "pela manha")
                     if (matchH1)  tomadas = Math.round(24 / parseInt(matchH1[1]));
                     else if (matchH2)  tomadas = Math.round(24 / parseInt(matchH2[1]));
+                    else if (matchH3)  tomadas = Math.round(24 / parseInt(matchH3[1]));
                     else if (matchVez) tomadas = parseInt(matchVez[1]);
                     else if (matchMaxDia) tomadas = parseInt(matchMaxDia[1]);
                     const qtdPorTomada = matchQtd ? parseInt(matchQtd[1]) : 1;
