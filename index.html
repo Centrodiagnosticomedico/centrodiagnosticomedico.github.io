@@ -2437,7 +2437,7 @@
                     <div>
                         <h4><i class="fas fa-robot"></i> Sistema de IA Configurado:</h4>
                         <ul style="margin-left: 20px; margin-top: 10px;">
-                            <li>IA de texto (Gemini/Groq): <span id="manus-status" style="color: var(--accent-color);">✓ Conectada</span></li>
+                            <li>IA de texto: <span id="manus-status" style="color: var(--accent-color);">✓ Conectada</span></li>
                             <li>Transcrição de voz: <span id="voice-status" style="color: var(--accent-color);">WebkitSpeechRecognition</span></li>
                             <li>Tipo: API nativa do navegador</li>
                         </ul>
@@ -4568,7 +4568,7 @@
         }
 
         // ============================================
-        // FUNÇÃO GERAR HDA COM IA (Google Gemini)
+        // FUNÇÃO GERAR HDA COM IA
         // ============================================
         async function gerarHDAComIA() {
             const conversa = document.getElementById('historia-doenca').value.trim();
@@ -4583,7 +4583,7 @@
 
             btnGerar.disabled = true;
             loadingEl.style.display = 'inline';
-            const prog = iniciarProgressoIA('Gerando a História da Doença Atual', 'Enviando a conversa para a IA…');
+            const prog = iniciarProgressoIA('Gerando a História da Doença Atual', 'Trabalhando…');
 
             const prompt = `Você é um assistente médico especializado em documentação clínica.
 
@@ -4605,8 +4605,8 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             try {
                 // Groq primeiro; se falhar (limite de uso, chave...), tenta o Gemini pelo Worker
                 const texto = await chamarIATexto([
-                    { url: MISTRAL_CONFIG.ENDPOINT, nome: 'o Groq' },
-                    { url: PROXY_BASE_URL + '/gemini-chat', nome: 'o Gemini' }
+                    { url: MISTRAL_CONFIG.ENDPOINT },
+                    { url: PROXY_BASE_URL + '/gemini-chat' }
                 ], { model: MISTRAL_CONFIG.MODEL_TEXT, messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 1024 }, prog);
                 if (!texto) throw new Error('A IA não retornou texto. Tente novamente.');
 
@@ -5231,7 +5231,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
 
                 if (!response.ok) {
                     const errText = await response.text();
-                    throw new Error(`Erro na API Gemini: ${response.status} - ${errText}`);
+                    throw new Error(`Erro na análise da imagem: ${response.status} - ${errText}`);
                 }
 
                 const data = await response.json();
@@ -5239,7 +5239,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 if (!texto) throw new Error('Resposta da IA veio vazia.');
                 return texto;
             } catch (error) {
-                console.error('Erro ao analisar imagem com Gemini:', error);
+                console.error('Erro ao analisar imagem com IA:', error);
                 return `Não foi possível analisar a imagem ${fileName} automaticamente. Por favor, insira os resultados manualmente.`;
             }
         }
@@ -5249,7 +5249,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             const imagePreviewContainer = document.getElementById('image-preview-container');
             const analiseTextarea = document.getElementById('analise-imagens-ia');
             
-            updateAPIStatus('Analisando imagens com Gemini AI...', 'disconnected');
+            updateAPIStatus('Analisando imagens com IA...', 'disconnected');
             
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
@@ -5338,7 +5338,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 return;
             }
             
-            let analise = `=== ANÁLISE DAS IMAGENS PELA IA (Google Gemini) ===\n\n`;
+            let analise = `=== ANÁLISE DAS IMAGENS PELA IA ===\n\n`;
             analise += `Total de arquivos analisados: ${uploadedImages.length}\n\n`;
             
             for (const [index, img] of uploadedImages.entries()) {
@@ -5966,7 +5966,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 fechar: function () { clearInterval(ctl.timer); card.style.display = 'none'; },
                 cancelar: function () { ctl.cancelado = true; if (ctl.abortAtual) { try { ctl.abortAtual.abort(); } catch (e) {} } }
             };
-            document.getElementById('ia-prog-titulo').textContent = titulo || 'Consultando a IA';
+            document.getElementById('ia-prog-titulo').textContent = titulo || 'Trabalhando';
             ctl.status(mensagemInicial || 'Enviando os dados para a IA…');
             document.getElementById('ia-prog-tempo').textContent = '0 s';
             document.getElementById('ia-prog-dica').textContent = 'Isso costuma levar de 5 a 20 segundos.';
@@ -5985,11 +5985,12 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
         // Chama a IA de texto tentando cada alvo em ordem. Cada tentativa tem limite de 60 s; o medico pode cancelar a qualquer momento.
         async function chamarIATexto(alvos, corpoObj, prog) {
             const corpo = JSON.stringify(corpoObj);
+            const ETAPAS = ['Pensando…', 'Buscando mais informações…', 'Trabalhando…'];
             let ultimoErro = null;
             for (let i = 0; i < alvos.length; i++) {
                 const alvo = alvos[i];
                 if (prog && prog.cancelado) break;
-                if (prog) prog.status(i === 0 ? 'Consultando ' + alvo.nome + '…' : 'A IA principal não respondeu — tentando ' + alvo.nome + '…');
+                if (prog) prog.status(ETAPAS[Math.min(i, ETAPAS.length - 1)]);
                 const ac = new AbortController();
                 if (prog) prog.abortAtual = ac;
                 let estourou = false;
@@ -6001,14 +6002,14 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                         body: corpo,
                         signal: ac.signal
                     });
-                    if (!response.ok) throw new Error('HTTP ' + response.status + ' em ' + alvo.url.replace(PROXY_BASE_URL, ''));
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
                     const data = await response.json();
                     const texto = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-                    if (!texto || !String(texto).trim()) throw new Error('resposta vazia em ' + alvo.url.replace(PROXY_BASE_URL, ''));
+                    if (!texto || !String(texto).trim()) throw new Error('resposta vazia');
                     return texto;
                 } catch (error) {
-                    ultimoErro = estourou ? new Error('demorou mais de 60 s em ' + alvo.nome) : error;
-                    console.warn('IA indisponivel (' + alvo.nome + '):', ultimoErro);
+                    ultimoErro = estourou ? new Error('demorou mais de 60 s') : error;
+                    console.warn('IA indisponivel (tentativa ' + (i + 1) + '):', ultimoErro);
                     if (prog && prog.cancelado) break;
                 } finally {
                     clearTimeout(timer);
@@ -6037,7 +6038,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 return;
             }
             updateAPIStatus('Testando a IA...', 'disconnected');
-            const prog = iniciarProgressoIA('Analisando os sintomas', 'Consultando a IA…');
+            const prog = iniciarProgressoIA('Analisando os sintomas', 'Pensando…');
             try {
                 const resposta = await chamarManusAPI([
                     { role: 'system', content: 'Você é um médico clínico. Dado o quadro do paciente, responda SOMENTE com o NOME da hipótese diagnóstica mais provável (exemplo de resposta: Pneumonia adquirida na comunidade). Não escreva explicações, características, recomendações, frases, listas nem formatação. Apenas o nome do diagnóstico. Mesmo com poucos dados, dê a hipótese mais provável. Só responda Dados insuficientes se o texto não descrever nenhum sintoma.' },
@@ -6061,8 +6062,8 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
         // o sistema nunca mais inventa diagnostico/receita quando a IA nao responde.
         async function chamarManusAPI(messages, maxTokens = 2000, prog = null) {
             return chamarIATexto([
-                { url: API_CONFIG.MANUS_ENDPOINT, nome: 'o Gemini' },
-                { url: PROXY_BASE_URL + '/groq-chat', nome: 'a IA reserva (Groq)' }
+                { url: API_CONFIG.MANUS_ENDPOINT },
+                { url: PROXY_BASE_URL + '/groq-chat' }
             ], { messages: messages, temperature: 0.3, max_tokens: maxTokens }, prog);
         }
 
@@ -6073,7 +6074,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
         async function gerarTratamentoComIA(diagnostico, dadosConsulta) {
             const tratamentoLoading = document.getElementById('treatment-loading');
             tratamentoLoading.style.display = 'flex';
-            const prog = iniciarProgressoIA('Gerando o plano de tratamento', 'Preparando os dados do paciente…');
+            const prog = iniciarProgressoIA('Gerando o plano de tratamento', 'Pensando…');
             try {
                 const _nameEl = document.getElementById('consult-patient-name');
                 const _pidAttr = _nameEl.getAttribute('data-paciente-id');
@@ -6340,7 +6341,7 @@ Use linguagem clara e profissional.`;
             
             const startTime = Date.now();
             mostrarLoading(true);
-            const prog = iniciarProgressoIA('Gerando sugestões diagnósticas', 'Preparando os dados do paciente…');
+            const prog = iniciarProgressoIA('Gerando sugestões diagnósticas', 'Pensando…');
             try {
                 const prompt = criarPromptDiagnosticoComImagens(paciente, dadosConsulta, analiseImagens);
                 const respostaIA = await chamarManusAPI([
@@ -7354,7 +7355,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                         tratamento: tratamento,
                         prescricao: document.getElementById('prescricao').value,
                         medico: currentDoctorName,
-                        iaModel: "IA (Gemini/Groq)",
+                        iaModel: "IA",
                         observacoes: document.getElementById('observacoes-consulta').value,
                         finalizada: true,
                         imagens_analisadas: uploadedImages.length > 0 ? uploadedImages.length : 0
@@ -7388,7 +7389,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
                     tratamento: tratamento,
                     prescricao: document.getElementById('prescricao').value,
                     medico: currentDoctorName,
-                    iaModel: "IA (Gemini/Groq)",
+                    iaModel: "IA",
                     observacoes: document.getElementById('observacoes-consulta').value,
                     finalizada: true,
                     imagens_analisadas: uploadedImages.length > 0 ? uploadedImages.length : 0
