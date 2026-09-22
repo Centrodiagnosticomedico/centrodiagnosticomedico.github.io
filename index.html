@@ -2113,6 +2113,24 @@
             background: #c0392b;
         }
 
+
+        /* Cartao de progresso da IA */
+        #ia-progresso { display: none; position: fixed; left: 50%; top: 88px; transform: translateX(-50%); z-index: 10050; width: min(560px, 92vw);
+            background: #fff; border: 1px solid #c9d6ea; border-radius: 14px; box-shadow: 0 14px 40px rgba(20, 40, 90, 0.35); padding: 16px 20px 12px; }
+        #ia-progresso .ia-prog-linha { display: flex; align-items: center; gap: 14px; }
+        #ia-progresso .ia-prog-spinner { width: 34px; height: 34px; border: 4px solid #d5e2f7; border-top-color: #2c5aa0; border-radius: 50%; animation: iaProgGira 0.9s linear infinite; flex: none; }
+        #ia-progresso .ia-prog-textos { flex: 1; min-width: 0; }
+        #ia-progresso #ia-prog-titulo { font-weight: 800; color: #1f3f78; font-size: 1.05rem; }
+        #ia-progresso #ia-prog-msg { color: #444; font-size: 0.92rem; margin-top: 2px; }
+        #ia-progresso #ia-prog-tempo { font-variant-numeric: tabular-nums; font-weight: 800; color: #2c5aa0; font-size: 1.15rem; min-width: 52px; text-align: right; }
+        #ia-progresso .ia-prog-barra { height: 6px; background: #e6eefb; border-radius: 6px; overflow: hidden; margin: 12px 0 8px; }
+        #ia-progresso .ia-prog-barra-fill { height: 100%; width: 35%; background: linear-gradient(90deg, #2c5aa0, #3aa0d5); border-radius: 6px; animation: iaProgBarra 1.4s ease-in-out infinite; }
+        #ia-progresso .ia-prog-rodape { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 0.82rem; color: #777; }
+        #ia-progresso #ia-prog-cancelar { border: 1px solid #c0392b; color: #c0392b; background: #fff; border-radius: 8px; padding: 4px 14px; cursor: pointer; font-weight: 700; }
+        #ia-progresso #ia-prog-cancelar:disabled { opacity: 0.5; cursor: default; }
+        @keyframes iaProgGira { to { transform: rotate(360deg); } }
+        @keyframes iaProgBarra { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+        @media (prefers-reduced-motion: reduce) { #ia-progresso .ia-prog-spinner, #ia-progresso .ia-prog-barra-fill { animation-duration: 3s; } }
     </style>
 </head>
 <body>
@@ -4565,6 +4583,7 @@
 
             btnGerar.disabled = true;
             loadingEl.style.display = 'inline';
+            const prog = iniciarProgressoIA('Gerando a História da Doença Atual', 'Enviando a conversa para a IA…');
 
             const prompt = `Você é um assistente médico especializado em documentação clínica.
 
@@ -4585,30 +4604,10 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
 
             try {
                 // Groq primeiro; se falhar (limite de uso, chave...), tenta o Gemini pelo Worker
-                let texto = '';
-                let ultimoErro = null;
-                for (const alvo of [MISTRAL_CONFIG.ENDPOINT, PROXY_BASE_URL + '/gemini-chat']) {   // Groq primeiro, Gemini de reserva
-                    try {
-                        const response = await fetch(alvo, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...appAuthHeaders() },
-                            body: JSON.stringify({
-                                model: MISTRAL_CONFIG.MODEL_TEXT,
-                                messages: [{ role: 'user', content: prompt }],
-                                temperature: 0.2,
-                                max_tokens: 1024
-                            })
-                        });
-                        if (!response.ok) throw new Error('HTTP ' + response.status + ' em ' + alvo.replace(PROXY_BASE_URL, ''));
-                        const data = await response.json();
-                        texto = data?.choices?.[0]?.message?.content || '';
-                        if (texto) break;
-                    } catch (e) {
-                        ultimoErro = e;
-                        console.warn('IA de texto indisponivel (' + alvo.replace(PROXY_BASE_URL, '') + '):', e);
-                    }
-                }
-                if (!texto && ultimoErro) throw new Error('A IA não respondeu (' + ultimoErro.message + ')');
+                const texto = await chamarIATexto([
+                    { url: MISTRAL_CONFIG.ENDPOINT, nome: 'o Groq' },
+                    { url: PROXY_BASE_URL + '/gemini-chat', nome: 'o Gemini' }
+                ], { model: MISTRAL_CONFIG.MODEL_TEXT, messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 1024 }, prog);
                 if (!texto) throw new Error('A IA não retornou texto. Tente novamente.');
 
                 hdaField.value = texto.trim();
@@ -4616,8 +4615,10 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
 
             } catch (err) {
                 console.error('Erro gerarHDA:', err);
+                if (err && err.cancelado) return;
                 alert('Erro ao gerar HDA: ' + err.message);
             } finally {
+                prog.fechar();
                 btnGerar.disabled = false;
                 loadingEl.style.display = 'none';
             }
@@ -4891,18 +4892,19 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
         // Acha as linhas de medicamentos dentro do texto do tratamento (secao === TRATAMENTO === ou, se nao houver, todas as linhas numeradas)
         function medicamentosDoTexto(texto) {
             const linhas = String(texto || '').split('\n');
-            let ini = linhas.findIndex(l => /^\s*={3}\s*TRATAMENTO\s*={3}/i.test(l));
-            let fim = linhas.length;
-            if (ini >= 0) {
-                for (let i = ini + 1; i < linhas.length; i++) { if (/^\s*={3}/.test(linhas[i])) { fim = i; break; } }
-            } else { ini = -1; }
+            const temSecaoTratamento = linhas.some(l => /^\s*={3}\s*TRATAMENTO\s*={3}/i.test(l));
+            let secao = '';
             const meds = [];
-            for (let i = ini + 1; i < fim; i++) {
-                if (/^\s*\d+[.)]/.test(linhas[i])) {
-                    const ex = extrairPrioridade(linhas[i].replace(/^\s*\d+[.)]\s*/, ''));
-                    const nomeDose = (ex.texto.split(/\s+-\s+/)[0] || ex.texto).trim();
-                    meds.push({ indice: i, linha: linhas[i], texto: ex.texto, nomeDose: nomeDose, etiqueta: ex.prioridade, fixo: motivoSempreEssencial(nomeDose) });
-                }
+            for (let i = 0; i < linhas.length; i++) {
+                const cab = linhas[i].match(/^\s*={3}\s*([^=]+?)\s*={3}/);
+                if (cab) { secao = semAcento(cab[1]); continue; }
+                if (!/^\s*\d+[.)]/.test(linhas[i])) continue;
+                // com secao TRATAMENTO: so ela vale; sem ela: vale tudo, menos as secoes PRESCRICAO/ORIENTACOES (evita medicamento repetido)
+                const vale = temSecaoTratamento ? secao === 'tratamento' : !/^(prescricao|orientac)/.test(secao);
+                if (!vale) continue;
+                const ex = extrairPrioridade(linhas[i].replace(/^\s*\d+[.)]\s*/, ''));
+                const nomeDose = (ex.texto.split(/\s+-\s+/)[0] || ex.texto).trim();
+                meds.push({ indice: i, linha: linhas[i], texto: ex.texto, nomeDose: nomeDose, etiqueta: ex.prioridade, fixo: motivoSempreEssencial(nomeDose) });
             }
             return { linhas: linhas, meds: meds };
         }
@@ -5040,7 +5042,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
 
                 return '<div style="margin-bottom:24px; padding-bottom:18px; border-bottom:1px dashed #ccc;' + (P ? ' border-left:6px solid ' + P.cor + '; padding-left:12px;' : '') + '">'
                     + (via ? '<p style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">' + esc(via) + '</p>' : '')
-                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:' + (P ? P.cor : '#1a1a2e') + ';">' + selo + esc(nomeDose) + '</p>'
+                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:#1a1a2e;">' + selo + esc(nomeDose) + '</p>'
                     + (posologia ? '<p style="font-size:14px; color:#333; margin-bottom:4px;">' + esc(posologia) + '</p>' : '')
                     + (quantidade ? '<p style="font-size:13px; color:#555; font-style:italic;">' + esc(quantidade) + '</p>' : '')
                     + '</div>';
@@ -5907,30 +5909,17 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
         // ============================================
         async function testarConexaoManusAPI() {
             try {
-                updateAPIStatus('Testando conexão com a IA...', 'disconnected');
-                if (!API_CONFIG.USE_MOCK) {
-                    const response = await fetch(API_CONFIG.MANUS_ENDPOINT, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...appAuthHeaders()
-                        },
-                        body: JSON.stringify({
-                            messages: [
-                                { role: 'system', content: 'Responda apenas "OK" se estiver funcionando.' },
-                                { role: 'user', content: 'Teste de conexão' }
-                            ],
-                            max_tokens: 10
-                        })
-                    });
-                    if (!response.ok) throw new Error('Falha na conexão');
-                }
+                updateAPIStatus('Verificando a IA...', 'disconnected');
+                // /saude so confere se o servidor e as chaves estao no ar (nao gasta cota de IA)
+                const response = await fetch(PROXY_BASE_URL + '/saude', { headers: appAuthHeaders() });
+                const info = response.ok ? await response.json() : null;
+                if (!info || !info.ok || !(info.gemini || info.groq)) throw new Error('Falha na conexão');
                 document.getElementById('manus-status').textContent = '✓ Conectada';
                 document.getElementById('manus-status').style.color = 'var(--accent-color)';
                 updateAPIStatus('IA conectada', 'connected');
                 return true;
             } catch (error) {
-                console.error('Erro ao testar Manus API:', error);
+                console.error('Erro ao verificar a IA:', error);
                 document.getElementById('manus-status').textContent = '✗ Indisponível';
                 document.getElementById('manus-status').style.color = 'var(--warning-color)';
                 updateAPIStatus('IA indisponível', 'disconnected');
@@ -5943,6 +5932,85 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
             if (!apiStatus) return;
             apiStatus.className = 'api-status ' + status;
             apiStatus.innerHTML = `<i class="fas fa-plug"></i> <span>${esc(message)}</span>`;
+        }
+
+        // ============================================
+        // PROGRESSO DA IA: cartao com spinner, cronometro, mensagem da etapa e botao Cancelar
+        // (assim o medico sabe que esta carregando e nao travado)
+        // ============================================
+        function iniciarProgressoIA(titulo, mensagemInicial) {
+            let card = document.getElementById('ia-progresso');
+            if (!card) {
+                card = document.createElement('div');
+                card.id = 'ia-progresso';
+                card.setAttribute('role', 'status');
+                card.setAttribute('aria-live', 'polite');
+                card.innerHTML =
+                    '<div class="ia-prog-linha">'
+                    + '<div class="ia-prog-spinner"></div>'
+                    + '<div class="ia-prog-textos"><div id="ia-prog-titulo"></div><div id="ia-prog-msg"></div></div>'
+                    + '<div id="ia-prog-tempo">0 s</div>'
+                    + '</div>'
+                    + '<div class="ia-prog-barra"><div class="ia-prog-barra-fill"></div></div>'
+                    + '<div class="ia-prog-rodape"><span id="ia-prog-dica"></span><button type="button" id="ia-prog-cancelar">Cancelar</button></div>';
+                document.body.appendChild(card);
+            }
+            const ctl = {
+                cancelado: false, abortAtual: null, inicio: Date.now(), timer: null,
+                status: function (msg) { const e = document.getElementById('ia-prog-msg'); if (e) e.textContent = msg; },
+                fechar: function () { clearInterval(ctl.timer); card.style.display = 'none'; },
+                cancelar: function () { ctl.cancelado = true; if (ctl.abortAtual) { try { ctl.abortAtual.abort(); } catch (e) {} } }
+            };
+            document.getElementById('ia-prog-titulo').textContent = titulo || 'Consultando a IA';
+            ctl.status(mensagemInicial || 'Enviando os dados para a IA…');
+            document.getElementById('ia-prog-tempo').textContent = '0 s';
+            document.getElementById('ia-prog-dica').textContent = 'Isso costuma levar de 5 a 20 segundos.';
+            const btn = document.getElementById('ia-prog-cancelar');
+            btn.disabled = false; btn.onclick = function () { btn.disabled = true; ctl.status('Cancelando…'); ctl.cancelar(); };
+            card.style.display = 'block';
+            ctl.timer = setInterval(function () {
+                const s = Math.round((Date.now() - ctl.inicio) / 1000);
+                const t = document.getElementById('ia-prog-tempo'); if (t) t.textContent = s + ' s';
+                const d = document.getElementById('ia-prog-dica');
+                if (d) d.textContent = s < 20 ? 'Isso costuma levar de 5 a 20 segundos.' : (s < 45 ? 'A IA está analisando com calma… ainda está funcionando.' : 'Está demorando mais que o normal. Você pode cancelar e tentar de novo.');
+            }, 1000);
+            return ctl;
+        }
+
+        // Chama a IA de texto tentando cada alvo em ordem. Cada tentativa tem limite de 60 s; o medico pode cancelar a qualquer momento.
+        async function chamarIATexto(alvos, corpoObj, prog) {
+            const corpo = JSON.stringify(corpoObj);
+            let ultimoErro = null;
+            for (let i = 0; i < alvos.length; i++) {
+                const alvo = alvos[i];
+                if (prog && prog.cancelado) break;
+                if (prog) prog.status(i === 0 ? 'Consultando ' + alvo.nome + '…' : 'A IA principal não respondeu — tentando ' + alvo.nome + '…');
+                const ac = new AbortController();
+                if (prog) prog.abortAtual = ac;
+                let estourou = false;
+                const timer = setTimeout(function () { estourou = true; ac.abort(); }, 60000);
+                try {
+                    const response = await fetch(alvo.url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...appAuthHeaders() },
+                        body: corpo,
+                        signal: ac.signal
+                    });
+                    if (!response.ok) throw new Error('HTTP ' + response.status + ' em ' + alvo.url.replace(PROXY_BASE_URL, ''));
+                    const data = await response.json();
+                    const texto = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+                    if (!texto || !String(texto).trim()) throw new Error('resposta vazia em ' + alvo.url.replace(PROXY_BASE_URL, ''));
+                    return texto;
+                } catch (error) {
+                    ultimoErro = estourou ? new Error('demorou mais de 60 s em ' + alvo.nome) : error;
+                    console.warn('IA indisponivel (' + alvo.nome + '):', ultimoErro);
+                    if (prog && prog.cancelado) break;
+                } finally {
+                    clearTimeout(timer);
+                }
+            }
+            if (prog && prog.cancelado) { const e = new Error('Cancelado pelo usuário'); e.cancelado = true; throw e; }
+            throw new Error('A IA não respondeu (' + (ultimoErro ? ultimoErro.message : 'sem detalhes') + ')');
         }
 
         // Deixa so o nome do diagnostico: tira formatacao (**, #), prefixos ("Hipotese:") e qualquer texto alem da 1a linha.
@@ -5964,46 +6032,33 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 return;
             }
             updateAPIStatus('Testando a IA...', 'disconnected');
+            const prog = iniciarProgressoIA('Analisando os sintomas', 'Consultando a IA…');
             try {
                 const resposta = await chamarManusAPI([
                     { role: 'system', content: 'Você é um médico clínico. Dado o quadro do paciente, responda SOMENTE com o NOME da hipótese diagnóstica mais provável (exemplo de resposta: Pneumonia adquirida na comunidade). Não escreva explicações, características, recomendações, frases, listas nem formatação. Apenas o nome do diagnóstico. Mesmo com poucos dados, dê a hipótese mais provável. Só responda Dados insuficientes se o texto não descrever nenhum sintoma.' },
                     { role: 'user', content: 'Quadro: ' + symptoms }
-                ], 300);
+                ], 300, prog);
                 document.getElementById('test-result').style.display = 'block';
                 document.getElementById('test-result-text').textContent = apenasNomeDoDiagnostico(resposta) || 'Dados insuficientes';
                 updateAPIStatus('IA testada com sucesso', 'connected');
             } catch (error) {
                 console.error('Erro no teste:', error);
+                if (error && error.cancelado) { updateAPIStatus('Teste cancelado', 'disconnected'); return; }
                 document.getElementById('test-result').style.display = 'block';
                 document.getElementById('test-result-text').textContent = 'A IA não respondeu. Verifique a conexão.';
                 updateAPIStatus('IA indisponível', 'disconnected');
+            } finally {
+                prog.fechar();
             }
         }
 
         // Chama a IA de texto: primeiro o Gemini; se ele falhar, o Groq (via Worker). Se os dois falharem, LEVANTA ERRO:
         // o sistema nunca mais inventa diagnostico/receita quando a IA nao responde.
-        async function chamarManusAPI(messages, maxTokens = 2000) {
-            const corpo = JSON.stringify({ messages: messages, temperature: 0.3, max_tokens: maxTokens });
-            const tentativas = [API_CONFIG.MANUS_ENDPOINT, PROXY_BASE_URL + '/groq-chat'];
-            let ultimoErro = null;
-            for (const url of tentativas) {
-                try {
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', ...appAuthHeaders() },
-                        body: corpo
-                    });
-                    if (!response.ok) throw new Error('HTTP ' + response.status + ' em ' + url.replace(PROXY_BASE_URL, ''));
-                    const data = await response.json();
-                    const texto = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-                    if (!texto || !String(texto).trim()) throw new Error('resposta vazia em ' + url.replace(PROXY_BASE_URL, ''));
-                    return texto;
-                } catch (error) {
-                    ultimoErro = error;
-                    console.warn('IA indisponivel (' + url.replace(PROXY_BASE_URL, '') + '):', error);
-                }
-            }
-            throw new Error('A IA não respondeu (' + (ultimoErro ? ultimoErro.message : 'sem detalhes') + ')');
+        async function chamarManusAPI(messages, maxTokens = 2000, prog = null) {
+            return chamarIATexto([
+                { url: API_CONFIG.MANUS_ENDPOINT, nome: 'o Gemini' },
+                { url: PROXY_BASE_URL + '/groq-chat', nome: 'a IA reserva (Groq)' }
+            ], { messages: messages, temperature: 0.3, max_tokens: maxTokens }, prog);
         }
 
         // (removido em 21/09/2026: resposta simulada de IA — nunca mais mostrar diagnostico/receita inventados)
@@ -6013,6 +6068,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
         async function gerarTratamentoComIA(diagnostico, dadosConsulta) {
             const tratamentoLoading = document.getElementById('treatment-loading');
             tratamentoLoading.style.display = 'flex';
+            const prog = iniciarProgressoIA('Gerando o plano de tratamento', 'Preparando os dados do paciente…');
             try {
                 const _nameEl = document.getElementById('consult-patient-name');
                 const _pidAttr = _nameEl.getAttribute('data-paciente-id');
@@ -6051,15 +6107,17 @@ FORMATO DA RESPOSTA (OBRIGATÓRIO):
 - [orientação 3]
 
 === PRESCRIÇÃO ===
-[formato de receita médica profissional]` 
+Apenas a lista numerada dos medicamentos com a quantidade (exemplo: 1. Amoxicilina 500mg ........ 21 comprimidos). NÃO escreva nome do médico, CRM, especialidade, telefone, endereço, e-mail, clínica nem assinatura.` 
                     },
                     { role: 'user', content: prompt }
-                ], 1024);
+                ], 1024, prog);
                 exibirTratamento(respostaIA);
             } catch (error) {
                 console.error('Erro ao gerar tratamento:', error);
+                if (error && error.cancelado) return;
                 alert('⚠️ A IA não conseguiu responder agora, então NENHUM tratamento/receita foi gerado.\n\nO sistema não mostra mais receitas de exemplo. Tente novamente em instantes ou escreva o tratamento manualmente.\n\nDetalhe: ' + (error && error.message ? error.message : error));
             } finally {
+                prog.fechar();
                 tratamentoLoading.style.display = 'none';
             }
         }
@@ -6097,6 +6155,19 @@ Use linguagem clara e profissional.`;
         }
 
         // (removido em 21/09/2026: resposta simulada de IA — nunca mais mostrar diagnostico/receita inventados)
+        // Tira das linhas de texto os dados do medico (nome, CRM, especialidade, telefone, endereco, e-mail...): a receita impressa monta o proprio cabecalho.
+        function removerDadosDoMedico(texto) {
+            const rotulo = /\b(telefone|tel\.?|fone|celular|whatsapp|especialidade(\s+m[eé]dica)?|crm(\/[a-z]{2})?|cro|coren|endere[cç]o|e-?mail|cnpj|registro profissional)\b\s*[:\-–\[(]/i;
+            const crmNumero = /\bcrm\b[\s\-\/]*[a-z]{0,2}[\s\-]*\d{3,}/i;
+            const colchete = /\[(telefone|especialidade|endere[cç]o|e-?mail|crm|nome do m[eé]dico|clinica|clínica)[^\]]*\]/i;
+            const medico = /^\s*(?:[-*•]\s*)?dr\.?a?\s+\S/i;
+            const linhas = String(texto || '').split('\n').filter(function (l) {
+                if (/^\s*\d+[.)]/.test(l)) return true;               // linha de medicamento nunca some
+                return !(rotulo.test(l) || crmNumero.test(l) || colchete.test(l) || medico.test(l));
+            });
+            return linhas.join('\n').replace(/\n{3,}/g, '\n\n');
+        }
+
         function exibirTratamento(tratamento) {
             const treatmentSection = document.getElementById('treatment-section');
             const treatmentContent = document.getElementById('treatment-content');
@@ -6111,12 +6182,13 @@ Use linguagem clara e profissional.`;
             document.getElementById('sig-data').textContent = 'Data: ' + dataHora;
 
             // Remover bloco de assinatura inline que a IA possa ter gerado no texto
-            const textoLimpo = tratamento
+            let textoLimpo = tratamento
                 .replace(/_{3,}[\s\S]{0,200}?Assinatura[\s\S]*?$/i, '')
                 .replace(/\[Nome do Médico\][^\n]*/gi, '')
                 .replace(/\[CRM\/UF\][^\n]*/gi, '')
                 .replace(/\[Data\][^\n]*/gi, '')
                 .trim();
+            textoLimpo = removerDadosDoMedico(textoLimpo).trim();
 
             // Antibioticos/anti-hipertensivos/uso continuo sempre saem [ESSENCIAL] (vermelho); as demais etiquetas vem da IA e o medico revisa no painel
             const textoComPrioridades = normalizarPrioridadesNoTexto(textoLimpo);
@@ -6135,7 +6207,7 @@ Use linguagem clara e profissional.`;
                 _tPainel = setTimeout(renderizarPainelPrioridades, 400);
             };
 
-            const prescricaoMatch = textoLimpo.match(/=== PRESCRIÇÃO ===\s*([\s\S]*?)(?:\n\n|$)/);
+            const prescricaoMatch = textoLimpo.match(/=== PRESCRIÇÃO ===\s*([\s\S]*?)(?=\n\s*===|$)/);
             if (prescricaoMatch) {
                 const prescricao = prescricaoMatch[1].trim();
                 prescricaoPreview.textContent = prescricao;
@@ -6263,6 +6335,7 @@ Use linguagem clara e profissional.`;
             
             const startTime = Date.now();
             mostrarLoading(true);
+            const prog = iniciarProgressoIA('Gerando sugestões diagnósticas', 'Preparando os dados do paciente…');
             try {
                 const prompt = criarPromptDiagnosticoComImagens(paciente, dadosConsulta, analiseImagens);
                 const respostaIA = await chamarManusAPI([
@@ -6275,7 +6348,7 @@ Considere que as imagens de Raios-X e Tomografias foram interpretadas e os achad
 Responda EXATAMENTE no formato especificado.` 
                     },
                     { role: 'user', content: prompt }
-                ], 2048);
+                ], 2048, prog);
                 currentDiagnoses = processarRespostaDiagnostica(respostaIA, dadosConsulta);
                 const responseTime = Date.now() - startTime;
                 responseTimes.push(responseTime);
@@ -6292,12 +6365,17 @@ Responda EXATAMENTE no formato especificado.`
                 exibirExamesSugeridos(currentDiagnoses);
             } catch (error) {
                 console.error('Erro ao gerar diagnóstico:', error);
+                if (error && error.cancelado) {
+                    document.getElementById('response-time').innerHTML = '<i class="fas fa-ban"></i> Cancelado';
+                    return;
+                }
                 currentDiagnoses = [];
                 exibirDiagnosticosCards(currentDiagnoses);
                 document.getElementById('response-time').innerHTML = 
                     `<i class="fas fa-exclamation-triangle"></i> IA indisponível — nenhum diagnóstico foi gerado`;
                 alert('⚠️ A IA não conseguiu responder agora, então NENHUMA sugestão diagnóstica foi gerada.\n\nO sistema não mostra mais diagnósticos de exemplo. Tente novamente em instantes ou avise o administrador.\n\nDetalhe: ' + (error && error.message ? error.message : error));
             } finally {
+                prog.fechar();
                 mostrarLoading(false);
             }
         }
