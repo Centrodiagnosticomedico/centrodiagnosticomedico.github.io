@@ -2959,6 +2959,19 @@
                                      style="min-height:120px; outline:none; border:1px solid #ddd; border-radius:6px; padding:12px 15px; background:#fff; cursor:text;"
                                      title="Clique para editar o plano de tratamento"></div>
                                 <small style="color:var(--gray-color); margin-top:6px; display:block;"><i class="fas fa-edit"></i> Campo editável — clique para ajustar o tratamento gerado.</small>
+                                <div id="prioridade-painel" style="display:none; margin-top:16px; padding:12px 14px; border:1px solid #d9d9d9; border-radius:8px; background:#fafafa;">
+                                    <h5 style="margin:0 0 4px 0;"><i class="fas fa-palette"></i> Prioridade dos medicamentos na receita</h5>
+                                    <small style="display:block; color:var(--gray-color); margin-bottom:8px;">
+                                        <strong style="color:#b91c1c;">● Vermelho</strong> = essencial (não pode faltar) &nbsp;|&nbsp;
+                                        <strong style="color:#8a5a00;">▲ Amarelo</strong> = muito importante, mas pode ser ajustado &nbsp;|&nbsp;
+                                        <strong style="color:#166534;">■ Verde</strong> = ajuda, mas pode ficar de fora se o paciente não puder comprar.
+                                        Antibióticos, anti-hipertensivos e remédios de uso contínuo ficam sempre em vermelho. A IA sugere; a decisão é sua.
+                                    </small>
+                                    <div id="prioridade-linhas"></div>
+                                    <button type="button" id="btn-confirmar-prioridades" class="btn btn-accent" style="margin-top:10px; padding:6px 16px;" onclick="confirmarPrioridades()">
+                                        <i class="fas fa-check"></i> Confirmar cores
+                                    </button>
+                                </div>
                                 <div id="treatment-signature" style="margin-top:20px; padding-top:16px; border-top:1px solid #ddd; font-family:'Courier New',monospace; font-size:0.97rem; color:#333; line-height:1.9;">
                                     <div style="margin-bottom:8px;">____________________________________</div>
                                     <div><strong id="sig-nome"></strong></div>
@@ -4812,33 +4825,186 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
         // ============================================
         // FUNÇÕES DE IMPRESSÃO DE PRESCRIÇÃO
         // ============================================
-        function imprimirPrescricao() {
-            const tratamentoTexto = document.getElementById('tratamento').value;
-            const nomeEl = document.getElementById('consult-patient-name');
-            const pacienteNome = nomeEl.textContent;
-            const pacienteIdAttr = nomeEl.getAttribute('data-paciente-id');
-            const paciente = pacienteIdAttr
-                ? pacientes.find(p => p.id === parseInt(pacienteIdAttr))
-                : pacientes.find(p => p.nome === pacienteNome.trim());
-            const pacienteIdade = paciente ? calcularIdade(paciente.dataNascimento) : null;
-            const pacienteSexo = paciente ? (paciente.sexo || 'Não informado') : null;
-            if (!tratamentoTexto || tratamentoTexto.trim() === '') {
-                alert('Não há plano de tratamento para imprimir.');
-                return;
+        // ============================================
+        // PRIORIDADE DOS MEDICAMENTOS NA RECEITA (vermelho / amarelo / verde)
+        // A prioridade fica gravada no proprio texto do tratamento, no fim da linha do medicamento: [ESSENCIAL] [IMPORTANTE] [OPCIONAL].
+        // Antibioticos, anti-hipertensivos e remedios de uso continuo sao SEMPRE vermelhos (nao da para rebaixar).
+        // ============================================
+        const PRIORIDADES_RECEITA = {
+            ESSENCIAL:  { rotulo: 'ESSENCIAL',  cor: '#b91c1c', fundo: '#fde8e8', icone: '●', nome: 'vermelho', texto: 'não interrompa este medicamento' },
+            IMPORTANTE: { rotulo: 'IMPORTANTE', cor: '#8a5a00', fundo: '#fff1c2', icone: '▲', nome: 'amarelo',  texto: 'muito recomendado; se houver dificuldade, fale com seu médico antes de trocar ou suspender' },
+            OPCIONAL:   { rotulo: 'OPCIONAL',   cor: '#166534', fundo: '#e1f4e7', icone: '■', nome: 'verde',    texto: 'ajuda no conforto ou na recuperação; pode ficar para depois se não for possível comprar' }
+        };
+        const _RE_TAG_PRIORIDADE = /\s*\[\s*(ESSENCIAL|IMPORTANTE|OPCIONAL)\s*\]\s*$/i;
+
+        function semAcento(t) {
+            return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+        }
+
+        // Separa o texto da linha da etiqueta de prioridade
+        function extrairPrioridade(texto) {
+            const m = String(texto || '').match(_RE_TAG_PRIORIDADE);
+            return { texto: String(texto || '').replace(_RE_TAG_PRIORIDADE, '').trim(), prioridade: m ? m[1].toUpperCase() : null };
+        }
+
+        // Grupos que SEMPRE ficam vermelhos (comparados so com o NOME do medicamento, sem acentos)
+        const _GRUPOS_SEMPRE_VERMELHOS = [
+            { motivo: 'Antibiótico/antimicrobiano', nomes: ['antibiotico', 'amoxicilina', 'ampicilina', 'penicilina', 'benzilpenicilina', 'oxacilina', 'piperacilina', 'tazobactam', 'clavulanato', 'sulbactam',
+                'cefalexina', 'cefadroxila', 'cefazolina', 'cefuroxima', 'cefaclor', 'cefixima', 'cefpodoxima', 'ceftriaxona', 'ceftazidima', 'cefepima', 'cefotaxima',
+                'azitromicina', 'claritromicina', 'eritromicina', 'roxitromicina', 'clindamicina', 'lincomicina', 'doxiciclina', 'tetraciclina', 'minociclina', 'tigeciclina',
+                'ciprofloxacino', 'levofloxacino', 'norfloxacino', 'ofloxacino', 'moxifloxacino', 'metronidazol', 'tinidazol', 'sulfametoxazol', 'trimetoprima',
+                'nitrofurantoina', 'fosfomicina', 'gentamicina', 'amicacina', 'tobramicina', 'estreptomicina', 'meropenem', 'imipenem', 'ertapenem', 'vancomicina',
+                'teicoplanina', 'linezolida', 'daptomicina', 'rifampicina', 'isoniazida', 'pirazinamida', 'etambutol', 'cloranfenicol', 'colistina', 'polimixina',
+                'fluconazol', 'itraconazol', 'voriconazol', 'anfotericina', 'aciclovir', 'valaciclovir', 'oseltamivir'] },
+            { motivo: 'Anti-hipertensivo', nomes: ['losartana', 'valsartana', 'olmesartana', 'candesartana', 'telmisartana', 'irbesartana', 'azilsartana', 'sacubitril',
+                'enalapril', 'captopril', 'lisinopril', 'ramipril', 'benazepril', 'perindopril', 'anlodipino', 'nifedipino', 'felodipino', 'lercanidipino', 'verapamil', 'diltiazem',
+                'atenolol', 'metoprolol', 'propranolol', 'carvedilol', 'bisoprolol', 'nebivolol', 'hidroclorotiazida', 'clortalidona', 'indapamida', 'espironolactona',
+                'furosemida', 'clonidina', 'metildopa', 'hidralazina', 'doxazosina', 'anti-hipertensivo', 'anti hipertensivo'] },
+            { motivo: 'Uso contínuo (não pode interromper)', nomes: ['insulina', 'metformina', 'glibenclamida', 'glimepirida', 'gliclazida', 'sitagliptina', 'vildagliptina', 'linagliptina',
+                'empagliflozina', 'dapagliflozina', 'liraglutida', 'semaglutida', 'pioglitazona', 'levotiroxina', 'metimazol', 'propiltiouracil',
+                'fenitoina', 'fenobarbital', 'carbamazepina', 'oxcarbazepina', 'valproato', 'acido valproico', 'lamotrigina', 'levetiracetam', 'topiramato', 'lacosamida',
+                'varfarina', 'warfarina', 'rivaroxabana', 'apixabana', 'dabigatrana', 'clopidogrel', 'ticagrelor', 'digoxina', 'amiodarona', 'isossorbida',
+                'atorvastatina', 'sinvastatina', 'rosuvastatina', 'pravastatina', 'levodopa', 'pramipexol', 'sertralina', 'fluoxetina', 'escitalopram', 'citalopram', 'paroxetina',
+                'venlafaxina', 'duloxetina', 'bupropiona', 'mirtazapina', 'amitriptilina', 'nortriptilina', 'litio', 'risperidona', 'olanzapina', 'quetiapina', 'haloperidol',
+                'aripiprazol', 'clozapina', 'tacrolimo', 'ciclosporina', 'micofenolato', 'azatioprina', 'metotrexato', 'leflunomida', 'hidroxicloroquina', 'sulfassalazina',
+                'fludrocortisona', 'tenofovir', 'lamivudina', 'efavirenz', 'dolutegravir', 'zidovudina', 'budesonida', 'formoterol', 'salmeterol', 'beclometasona', 'fluticasona',
+                'tiotropio', 'alopurinol', 'febuxostate'] }
+        ];
+        const _RE_GRUPOS_VERMELHOS = _GRUPOS_SEMPRE_VERMELHOS.map(g => ({
+            motivo: g.motivo,
+            re: new RegExp('\\b(' + g.nomes.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')')
+        }));
+
+        // Devolve o motivo (texto) se o medicamento e do tipo "sempre vermelho"; senao null
+        function motivoSempreEssencial(nomeMedicamento) {
+            const t = semAcento(nomeMedicamento);
+            for (const g of _RE_GRUPOS_VERMELHOS) { if (g.re.test(t)) return g.motivo; }
+            return null;
+        }
+
+        // Prioridade que vale de verdade: vermelho obrigatorio > etiqueta escolhida > sem cor
+        function prioridadeEfetiva(nomeDose, etiqueta) {
+            if (motivoSempreEssencial(nomeDose)) return 'ESSENCIAL';
+            return etiqueta && PRIORIDADES_RECEITA[etiqueta] ? etiqueta : null;
+        }
+
+        // Acha as linhas de medicamentos dentro do texto do tratamento (secao === TRATAMENTO === ou, se nao houver, todas as linhas numeradas)
+        function medicamentosDoTexto(texto) {
+            const linhas = String(texto || '').split('\n');
+            let ini = linhas.findIndex(l => /^\s*={3}\s*TRATAMENTO\s*={3}/i.test(l));
+            let fim = linhas.length;
+            if (ini >= 0) {
+                for (let i = ini + 1; i < linhas.length; i++) { if (/^\s*={3}/.test(linhas[i])) { fim = i; break; } }
+            } else { ini = -1; }
+            const meds = [];
+            for (let i = ini + 1; i < fim; i++) {
+                if (/^\s*\d+[.)]/.test(linhas[i])) {
+                    const ex = extrairPrioridade(linhas[i].replace(/^\s*\d+[.)]\s*/, ''));
+                    const nomeDose = (ex.texto.split(/\s+-\s+/)[0] || ex.texto).trim();
+                    meds.push({ indice: i, linha: linhas[i], texto: ex.texto, nomeDose: nomeDose, etiqueta: ex.prioridade, fixo: motivoSempreEssencial(nomeDose) });
+                }
             }
+            return { linhas: linhas, meds: meds };
+        }
 
-            const dataAtual = new Date();
-            const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
+        // Troca/retira a etiqueta de uma linha
+        function comEtiqueta(linha, etiqueta) {
+            const base = String(linha).replace(_RE_TAG_PRIORIDADE, '').replace(/\s+$/, '');
+            return etiqueta ? base + ' [' + etiqueta + ']' : base;
+        }
 
-            // Extrair linhas de medicamentos da seção === TRATAMENTO ===
-            const secaoMatch = tratamentoTexto.match(/===\s*TRATAMENTO\s*===([\s\S]*?)(?:===|$)/i);
-            const linhasMeds = secaoMatch
-                ? secaoMatch[1].trim().split('\n').filter(l => l.trim().match(/^\d+[.)]/) )
-                : tratamentoTexto.split('\n').filter(l => l.trim().match(/^\d+[.)]/) );
+        // Garante [ESSENCIAL] nas linhas "sempre vermelhas" (mesmo que a IA ou o medico tenham posto outra)
+        function normalizarPrioridadesNoTexto(texto) {
+            const r = medicamentosDoTexto(texto);
+            r.meds.forEach(m => { if (m.fixo && m.etiqueta !== 'ESSENCIAL') r.linhas[m.indice] = comEtiqueta(r.linhas[m.indice], 'ESSENCIAL'); });
+            return r.linhas.join('\n');
+        }
 
-            let totalComprimidosTratamento = 0;
-            const blocosHtml = linhasMeds.map(function(linha) {
-                const texto = linha.replace(/^\d+[.)]\s*/, '').trim();
+        // HTML do plano na tela: etiquetas coloridas
+        function htmlTratamentoComEtiquetas(texto) {
+            return esc(texto).replace(/\[(ESSENCIAL|IMPORTANTE|OPCIONAL)\]/g, function (m, p) {
+                const P = PRIORIDADES_RECEITA[p];
+                return '<span style="color:' + P.cor + '; background:' + P.fundo + '; font-weight:700; border-radius:3px; padding:0 4px;">' + P.icone + ' ' + p + '</span>';
+            }).replace(/\n/g, '<br>');
+        }
+
+        function atualizarTextoDoTratamento(novoTexto, redesenharTela) {
+            document.getElementById('tratamento').value = novoTexto;
+            if (redesenharTela) document.getElementById('treatment-content').innerHTML = htmlTratamentoComEtiquetas(novoTexto);
+        }
+
+        // Painel "Prioridade dos medicamentos": um seletor por medicamento
+        function renderizarPainelPrioridades() {
+            const painel = document.getElementById('prioridade-painel');
+            const lista = document.getElementById('prioridade-linhas');
+            if (!painel || !lista) return;
+            const { meds } = medicamentosDoTexto(document.getElementById('tratamento').value);
+            painel.style.display = meds.length ? 'block' : 'none';
+            lista.innerHTML = '';
+            meds.forEach(function (m) {
+                const linha = document.createElement('div');
+                linha.className = 'prioridade-linha';
+                linha.style.cssText = 'display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:6px 0; border-bottom:1px dashed #e2e2e2;';
+                const nome = document.createElement('span');
+                nome.style.cssText = 'flex:1 1 220px; font-weight:600;';
+                nome.textContent = m.nomeDose;
+                const sel = document.createElement('select');
+                sel.className = 'prioridade-select';
+                sel.setAttribute('data-indice', String(m.indice));
+                sel.style.cssText = 'padding:5px 8px; border-radius:6px; border:1px solid #bbb; min-width:190px; max-width:270px;';
+                [['', '— sem cor —'], ['ESSENCIAL', '● Vermelho — essencial'], ['IMPORTANTE', '▲ Amarelo — importante'], ['OPCIONAL', '■ Verde — opcional']].forEach(function (o) {
+                    const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op);
+                });
+                const atual = m.fixo ? 'ESSENCIAL' : (m.etiqueta || '');
+                sel.value = atual;
+                if (atual && PRIORIDADES_RECEITA[atual]) { sel.style.background = PRIORIDADES_RECEITA[atual].fundo; sel.style.color = PRIORIDADES_RECEITA[atual].cor; sel.style.fontWeight = '700'; }
+                if (m.fixo) { sel.disabled = true; sel.title = m.fixo + ' — sempre vermelho'; }
+                sel.addEventListener('change', function () { definirPrioridadeMedicamento(m.indice, sel.value); });
+                linha.appendChild(nome); linha.appendChild(sel);
+                if (m.fixo) {
+                    const cad = document.createElement('span');
+                    cad.style.cssText = 'font-size:0.82rem; color:#b91c1c;';
+                    cad.textContent = '🔒 ' + m.fixo + ' — sempre vermelho';
+                    linha.appendChild(cad);
+                }
+                lista.appendChild(linha);
+            });
+        }
+
+        function definirPrioridadeMedicamento(indice, valor) {
+            const linhas = document.getElementById('tratamento').value.split('\n');
+            if (indice < 0 || indice >= linhas.length) return;
+            linhas[indice] = comEtiqueta(linhas[indice], valor || null);
+            window._prioridadesRevisadas = true;
+            atualizarTextoDoTratamento(normalizarPrioridadesNoTexto(linhas.join('\n')), true);
+            renderizarPainelPrioridades();
+        }
+
+        function confirmarPrioridades() {
+            window._prioridadesRevisadas = true;
+            const b = document.getElementById('btn-confirmar-prioridades');
+            if (b) { b.innerHTML = '<i class="fas fa-check"></i> Cores confirmadas'; b.disabled = true; }
+        }
+
+        // Antes de imprimir: se as cores vieram da IA e ainda nao foram revisadas, pede confirmacao
+        function confirmarPrioridadesAntesDeImprimir(texto) {
+            const { meds } = medicamentosDoTexto(texto);
+            const sugeridos = meds.filter(m => !m.fixo && m.etiqueta);
+            const semCor = meds.filter(m => !m.fixo && !m.etiqueta);
+            if (window._prioridadesRevisadas || (sugeridos.length === 0 && semCor.length === 0) || meds.length === 0) return true;
+            let msg = 'As cores da receita (amarelo/verde) foram SUGERIDAS pela IA e ainda não foram revisadas por você.';
+            if (semCor.length) msg += '\n' + semCor.length + ' medicamento(s) estão sem cor.';
+            msg += '\n\nAntibióticos, anti-hipertensivos e remédios de uso contínuo já saem em vermelho automaticamente.\n\nClique em OK para imprimir assim mesmo, ou Cancelar para revisar as cores no painel "Prioridade dos medicamentos".';
+            return confirm(msg);
+        }
+
+        // Monta os blocos de medicamentos da receita (usado na impressao e na reimpressao do historico)
+        function montarBlocosReceita(linhasMeds) {
+            let total = 0;
+            const presentes = {};
+            const html = linhasMeds.map(function (linha) {
+                const ex = extrairPrioridade(linha.replace(/^\s*\d+[.)]\s*/, '').trim());
+                const texto = ex.texto;
                 const partes = texto.split(/\s+-\s+/);
                 const nomeDose = partes[0] || texto;
                 const posologia = partes.slice(1).join(' - ') || '';
@@ -4856,23 +5022,70 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                     else if (matchH2)  tomadas = Math.round(24 / parseInt(matchH2[1]));
                     else if (matchVez) tomadas = parseInt(matchVez[1]);
                     const qtdPorTomada = matchQtd ? parseInt(matchQtd[1]) : 1;
-                    const total = dias * tomadas * qtdPorTomada;
-                    if (total > 0) {
-                        quantidade = 'Dispensar: ' + total + ' unidade' + (total > 1 ? 's' : '');
-                        totalComprimidosTratamento += total;
+                    const soma = dias * tomadas * qtdPorTomada;
+                    if (soma > 0) {
+                        quantidade = 'Dispensar: ' + soma + ' unidade' + (soma > 1 ? 's' : '');
+                        total += soma;
                     }
                 }
 
                 const viaMatch = posologia.match(/\b(via oral|VO|IM|IV|subcutâneo|SC|tópico|inalatório|inalatorio|sublingual|retal|nasal)\b/i);
                 const via = viaMatch ? viaMatch[1] : '';
+                const prio = prioridadeEfetiva(nomeDose, ex.prioridade);
+                const P = prio ? PRIORIDADES_RECEITA[prio] : null;
+                if (P) presentes[prio] = true;
+                const selo = P
+                    ? '<span style="display:inline-block; background:' + P.fundo + '; color:' + P.cor + '; border:1.5px solid ' + P.cor + '; border-radius:4px; padding:1px 8px; margin-right:9px; font-size:11px; font-weight:800; letter-spacing:0.6px; vertical-align:middle;">' + P.icone + ' ' + P.rotulo + '</span>'
+                    : '';
 
-                return '<div style="margin-bottom:24px; padding-bottom:18px; border-bottom:1px dashed #ccc;">'
+                return '<div style="margin-bottom:24px; padding-bottom:18px; border-bottom:1px dashed #ccc;' + (P ? ' border-left:6px solid ' + P.cor + '; padding-left:12px;' : '') + '">'
                     + (via ? '<p style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">' + esc(via) + '</p>' : '')
-                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:#1a1a2e;">' + esc(nomeDose) + '</p>'
+                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:' + (P ? P.cor : '#1a1a2e') + ';">' + selo + esc(nomeDose) + '</p>'
                     + (posologia ? '<p style="font-size:14px; color:#333; margin-bottom:4px;">' + esc(posologia) + '</p>' : '')
                     + (quantidade ? '<p style="font-size:13px; color:#555; font-style:italic;">' + esc(quantidade) + '</p>' : '')
                     + '</div>';
             }).join('');
+
+            let legenda = '';
+            const usadas = Object.keys(presentes);
+            if (usadas.length) {
+                legenda = '<div style="margin-top:6px; padding:10px 12px; border:1px solid #999; border-radius:6px; font-size:11.5px; color:#333; line-height:1.55;">'
+                    + '<strong>Como ler as cores:</strong><br>'
+                    + ['ESSENCIAL', 'IMPORTANTE', 'OPCIONAL'].filter(k => presentes[k]).map(function (k) {
+                        const P = PRIORIDADES_RECEITA[k];
+                        return '<span style="color:' + P.cor + '; font-weight:800;">' + P.icone + ' ' + P.rotulo + ' (' + P.nome + ')</span> — ' + P.texto + '.';
+                    }).join('<br>')
+                    + '<br><em>Em caso de dificuldade financeira, priorize os itens em vermelho e converse com seu médico antes de retirar qualquer item.</em>'
+                    + '</div>';
+            }
+            return { html: html + legenda, total: total, temCor: usadas.length > 0 };
+        }
+
+        function imprimirPrescricao() {
+            const tratamentoTexto = document.getElementById('tratamento').value;
+            const nomeEl = document.getElementById('consult-patient-name');
+            const pacienteNome = nomeEl.textContent;
+            const pacienteIdAttr = nomeEl.getAttribute('data-paciente-id');
+            const paciente = pacienteIdAttr
+                ? pacientes.find(p => p.id === parseInt(pacienteIdAttr))
+                : pacientes.find(p => p.nome === pacienteNome.trim());
+            const pacienteIdade = paciente ? calcularIdade(paciente.dataNascimento) : null;
+            const pacienteSexo = paciente ? (paciente.sexo || 'Não informado') : null;
+            if (!tratamentoTexto || tratamentoTexto.trim() === '') {
+                alert('Não há plano de tratamento para imprimir.');
+                return;
+            }
+            if (!confirmarPrioridadesAntesDeImprimir(tratamentoTexto)) return;
+
+            const dataAtual = new Date();
+            const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
+
+            // Extrair linhas de medicamentos da seção === TRATAMENTO ===
+            const linhasMeds = medicamentosDoTexto(tratamentoTexto).meds.map(function (x) { return x.linha; });
+
+            const _receita = montarBlocosReceita(linhasMeds);
+            const blocosHtml = _receita.html;
+            let totalComprimidosTratamento = _receita.total;
 
             const printContent = document.createElement('div');
             printContent.className = 'prescription-print-content';
@@ -4913,7 +5126,7 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
 
             const pw = window.open('', '_blank', 'width=800,height=900');
             pw.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receita Médica</title>'
-                + '<style>body{margin:0;padding:40px;font-family:Segoe UI,sans-serif;color:#1a1a1a;}hr{border:none;}p{margin:0 0 4px;}@media print{@page{margin:1.5cm;}}</style>'
+                + '<style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}body{margin:0;padding:40px;font-family:Segoe UI,sans-serif;color:#1a1a1a;}hr{border:none;}p{margin:0 0 4px;}@media print{@page{margin:1.5cm;}}</style>'
                 + '</head><body>'
                 + printContent.innerHTML
                 + '</body></html>');
@@ -4940,51 +5153,17 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
 
             const tratamentoTexto = consulta.tratamento || '';
 
-            const secaoMatch = tratamentoTexto.match(/===\s*TRATAMENTO\s*===[\s\S]*?(?:===|$)/i);
-            const linhasMeds = tratamentoTexto
-                ? tratamentoTexto.split('\n').filter(l => l.trim().match(/^\d+[.)]/)).map(l => l)
-                : [];
+            const linhasMeds = medicamentosDoTexto(tratamentoTexto).meds.map(function (x) { return x.linha; });
 
-            let totalComprimidosTratamento = 0;
-            const blocosHtml = linhasMeds.map(function(linha) {
-                const texto = linha.replace(/^\d+[.)]\s*/, '').trim();
-                const partes2 = texto.split(/\s+-\s+/);
-                const nomeDose = partes2[0] || texto;
-                const posologia = partes2.slice(1).join(' - ') || '';
-                let quantidade = '';
-                const mDias = posologia.match(/por\s+(\d+)\s+dias?/i);
-                const mH1   = posologia.match(/de\s+(\d+)\/(\d+)\s*h/i);
-                const mH2   = posologia.match(/a cada\s+(\d+)\s*horas?/i);
-                const mVez  = posologia.match(/(\d+)\s*(?:vez|vezes)\s*ao\s*dia/i);
-                const mQtd  = posologia.match(/^(\d+)\s+/);
-                if (mDias) {
-                    const dias = parseInt(mDias[1]);
-                    let tomadas = 1;
-                    if (mH1)  tomadas = Math.round(24 / parseInt(mH1[1]));
-                    else if (mH2)  tomadas = Math.round(24 / parseInt(mH2[1]));
-                    else if (mVez) tomadas = parseInt(mVez[1]);
-                    const qtd = mQtd ? parseInt(mQtd[1]) : 1;
-                    const total = dias * tomadas * qtd;
-                    if (total > 0) {
-                        quantidade = 'Dispensar: ' + total + ' unidade' + (total > 1 ? 's' : '');
-                        totalComprimidosTratamento += total;
-                    }
-                }
-                const viaMatch = posologia.match(/\b(via oral|VO|IM|IV|subcutâneo|SC|tópico|inalatório|inalatorio|sublingual|retal|nasal)\b/i);
-                const via = viaMatch ? viaMatch[1] : '';
-                return '<div style="margin-bottom:24px; padding-bottom:18px; border-bottom:1px dashed #ccc;">'
-                    + (via ? '<p style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">' + esc(via) + '</p>' : '')
-                    + '<p style="font-size:16px; font-weight:700; margin-bottom:5px; color:#1a1a2e;">' + esc(nomeDose) + '</p>'
-                    + (posologia ? '<p style="font-size:14px; color:#333; margin-bottom:4px;">' + esc(posologia) + '</p>' : '')
-                    + (quantidade ? '<p style="font-size:13px; color:#555; font-style:italic;">' + esc(quantidade) + '</p>' : '')
-                    + '</div>';
-            }).join('');
+            const _receita = montarBlocosReceita(linhasMeds);
+            const blocosHtml = _receita.html;
+            let totalComprimidosTratamento = _receita.total;
 
             const medicoNome = consulta.medico || currentDoctorName;
 
             const pw = window.open('', '_blank', 'width=800,height=900');
             pw.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receita Médica</title>'
-                + '<style>body{margin:0;padding:40px;font-family:Segoe UI,sans-serif;color:#1a1a1a;}hr{border:none;}p{margin:0 0 4px;}@media print{@page{margin:1.5cm;}}</style>'
+                + '<style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}body{margin:0;padding:40px;font-family:Segoe UI,sans-serif;color:#1a1a1a;}hr{border:none;}p{margin:0 0 4px;}@media print{@page{margin:1.5cm;}}</style>'
                 + '</head><body>'
                 + '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">'
                     + '<div>'
@@ -5853,12 +6032,18 @@ Forneça recomendações práticas e baseadas em diretrizes médicas (OMS, Minis
 - Ao fazer substituição por alergia, indique explicitamente no texto: "(SUBSTITUÍDO — paciente alérgico ao [medicamento original])".
 - Esta regra é absoluta e não admite exceções.
 
+PRIORIDADE DE CADA MEDICAMENTO (o paciente pode não ter dinheiro para comprar tudo): escreva no FIM de cada linha de medicamento da seção === TRATAMENTO === UMA destas etiquetas entre colchetes:
+[ESSENCIAL] = não pode faltar nem ser interrompido: o tratamento principal da doença, TODO antibiótico/antimicrobiano, TODO anti-hipertensivo e todo medicamento de uso contínuo (diabetes, tireoide, epilepsia, anticoagulante, antidepressivo, imunossupressor, etc.).
+[IMPORTANTE] = muito importante, mas o tratamento não falha se for ajustado ou adiado.
+[OPCIONAL] = ajuda no conforto ou na recuperação (analgésico/antitérmico leve, xarope, vitamina, antialérgico para sintoma etc.) e pode ser dispensado se o paciente não puder comprar.
+NUNCA classifique antibiótico, anti-hipertensivo ou medicamento de uso contínuo como [IMPORTANTE] ou [OPCIONAL].
+
 FORMATO DA RESPOSTA (OBRIGATÓRIO):
 
 === TRATAMENTO ===
-1. Medicação 1: [nome genérico] [dosagem] - [via] de [frequência] por [duração]
-2. Medicação 2: ...
-3. Medicação 3: ...
+1. Medicação 1: [nome genérico] [dosagem] - [via] de [frequência] por [duração] [ESSENCIAL]
+2. Medicação 2: ... [IMPORTANTE]
+3. Medicação 3: ... [OPCIONAL]
 
 === ORIENTAÇÕES ===
 - [orientação 1]
@@ -5933,12 +6118,21 @@ Use linguagem clara e profissional.`;
                 .replace(/\[Data\][^\n]*/gi, '')
                 .trim();
 
-            treatmentContent.innerHTML = esc(textoLimpo).replace(/\n/g, '<br>');
-            tratamentoTextarea.value = textoLimpo;
+            // Antibioticos/anti-hipertensivos/uso continuo sempre saem [ESSENCIAL] (vermelho); as demais etiquetas vem da IA e o medico revisa no painel
+            const textoComPrioridades = normalizarPrioridadesNoTexto(textoLimpo);
+            window._prioridadesRevisadas = false;
+            const btnConf = document.getElementById('btn-confirmar-prioridades');
+            if (btnConf) { btnConf.innerHTML = '<i class="fas fa-check"></i> Confirmar cores'; btnConf.disabled = false; }
+            treatmentContent.innerHTML = htmlTratamentoComEtiquetas(textoComPrioridades);
+            tratamentoTextarea.value = textoComPrioridades;
+            renderizarPainelPrioridades();
 
             // Sincronizar edições do contenteditable com o textarea oculto
+            let _tPainel = null;
             treatmentContent.oninput = function() {
                 tratamentoTextarea.value = treatmentContent.innerText;
+                clearTimeout(_tPainel);
+                _tPainel = setTimeout(renderizarPainelPrioridades, 400);
             };
 
             const prescricaoMatch = textoLimpo.match(/=== PRESCRIÇÃO ===\s*([\s\S]*?)(?:\n\n|$)/);
@@ -6592,6 +6786,7 @@ Justificativa: [texto com evidências integrando clínica e imagem]
             document.getElementById('treatment-section').style.display = 'none';
             document.getElementById('allergy-alert-top').style.display = 'none';
             document.getElementById('treatment-content').innerHTML = '';
+            if (document.getElementById('prioridade-painel')) { document.getElementById('prioridade-painel').style.display = 'none'; document.getElementById('prioridade-linhas').innerHTML = ''; }
             document.getElementById('sig-nome').textContent = '';
             document.getElementById('sig-crm').textContent = '';
             document.getElementById('sig-data').textContent = '';
