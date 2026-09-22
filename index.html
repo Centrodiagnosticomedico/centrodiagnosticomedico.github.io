@@ -5036,9 +5036,8 @@ Retorne APENAS o texto da HDA, sem títulos, sem explicações adicionais.`;
                 const prio = prioridadeEfetiva(nomeDose, ex.prioridade);
                 const P = prio ? PRIORIDADES_RECEITA[prio] : null;
                 if (P) presentes[prio] = true;
-                const selo = P
-                    ? '<span style="display:inline-block; background:' + P.fundo + '; color:' + P.cor + '; border:1.5px solid ' + P.cor + '; border-radius:50%; width:20px; height:20px; text-align:center; line-height:17px; padding:0; margin-right:9px; font-size:13px; font-weight:800; vertical-align:middle;" title="' + P.rotulo + '">' + P.icone + '</span>'
-                    : '';
+                const selo = '';  // so a barra colorida da esquerda marca a prioridade (sem circulo/simbolo do lado do nome)
+
 
                 return '<div style="margin-bottom:24px; padding-bottom:18px; border-bottom:1px dashed #ccc;' + (P ? ' border-left:6px solid ' + P.cor + '; padding-left:12px;' : '') + '">'
                     + (via ? '<p style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">' + esc(via) + '</p>' : '')
