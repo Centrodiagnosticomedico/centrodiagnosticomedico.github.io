@@ -5,9 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Centro de Diagnóstico Médico - Sistema Inteligente com Apoio de IA</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
     <!-- Firebase Authentication (login real, protegido por token) -->
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+    <!-- Three.js: fundo 3D (hélice de DNA) da tela de login. Carregamento não-bloqueante
+         e todo o código que o usa está protegido por checagem de "typeof THREE" - se o
+         CDN falhar (offline, bloqueador etc.), a tela de login continua 100% funcional,
+         só sem a animação (cai no gradiente CSS de sempre). -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.158.0/three.min.js" defer></script>
     <style>
         :root {
             --primary-color: #2c5aa0;
@@ -51,12 +59,263 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             display: flex;
             justify-content: center;
             align-items: center;
             z-index: 9999;
             animation: fadeIn 0.8s ease;
+        }
+
+        /* ================================================================
+           TELA DE LOGIN — layout dividido (hero escuro + painel de acesso)
+           Regras aqui são todas com #welcomeOverlay (ID, mais específico
+           que a classe .welcome-overlay) de propósito: o modal de "Trocar
+           Senha" reaproveita .welcome-overlay/.welcome-card e não pode
+           ganhar esse layout - só a tela de login usa isto.
+           ================================================================ */
+        /* Layout dividido (hero+painel) só no visual "futurista" - por padrão o
+           #welcomeOverlay usa o comportamento simples de .welcome-overlay
+           (centralizado, gradiente). Ver Configurações > Aparência. */
+        html.tema-futurista #welcomeOverlay {
+            display: flex;
+            flex-direction: row;
+            align-items: stretch;
+            justify-content: stretch;
+            background: #f4f6fa;
+            padding: 0;
+        }
+
+        #welcomeOverlay .login-hero {
+            position: relative;
+            flex: 1.15;
+            min-width: 0;
+            background: linear-gradient(160deg, #0b1728 0%, #142743 55%, #0b1728 100%);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        #welcomeOverlay .login-hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background-image:
+                linear-gradient(rgba(63, 230, 196, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(63, 230, 196, 0.05) 1px, transparent 1px);
+            background-size: 34px 34px;
+            mask-image: linear-gradient(180deg, transparent, rgba(0,0,0,0.9) 30%, rgba(0,0,0,0.9) 80%, transparent);
+        }
+
+        #welcomeOverlay .login-hero::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 140px;
+            background: linear-gradient(180deg, transparent, rgba(63, 230, 196, 0.09), transparent);
+            animation: heroScan 7s linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes heroScan {
+            0% { top: -140px; }
+            100% { top: 100%; }
+        }
+
+        #dna-bg-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            display: block;
+        }
+
+        #welcomeOverlay .login-hero-content {
+            position: relative;
+            z-index: 2;
+            padding: 5% 8%;
+            max-width: 460px;
+            color: #eef3fb;
+        }
+
+        #welcomeOverlay .login-hero-badge {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: rgba(26, 188, 156, 0.15);
+            border: 1px solid rgba(46, 214, 179, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 32px;
+        }
+
+        #welcomeOverlay .login-hero-badge i {
+            color: #3ee6c4;
+            font-size: 24px;
+        }
+
+        #welcomeOverlay .login-hero-title {
+            font-family: 'Fraunces', Georgia, serif;
+            font-weight: 600;
+            font-size: clamp(2rem, 3.4vw, 2.7rem);
+            line-height: 1.16;
+            margin-bottom: 18px;
+            letter-spacing: -0.01em;
+            color: #ffffff;
+        }
+
+        #welcomeOverlay .login-hero-sub {
+            font-size: 1.02rem;
+            color: #a9bcd6;
+            line-height: 1.65;
+            margin-bottom: 46px;
+            max-width: 380px;
+        }
+
+        #welcomeOverlay .login-hero-stats {
+            display: flex;
+            gap: 34px;
+        }
+
+        #welcomeOverlay .login-hero-stats div {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        #welcomeOverlay .login-hero-stats strong {
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 1.35rem;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        #welcomeOverlay .login-hero-stats span {
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 0.7rem;
+            color: #7c93b8;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        #welcomeOverlay .login-panel {
+            flex: 1;
+            min-width: 380px;
+            background: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            animation: none;
+        }
+
+        #welcomeOverlay .login-panel-inner {
+            width: 100%;
+            max-width: 380px;
+        }
+
+        #welcomeOverlay .login-panel-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 26px;
+            box-shadow: 0 10px 22px rgba(44, 90, 160, 0.28);
+        }
+
+        #welcomeOverlay .login-panel-icon i {
+            color: white;
+            font-size: 20px;
+        }
+
+        #welcomeOverlay .login-panel-inner h2 {
+            font-size: 1.55rem;
+            color: var(--dark-color);
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        #welcomeOverlay .login-panel-lead {
+            color: var(--gray-color);
+            margin-bottom: 30px;
+            font-size: 0.97rem;
+        }
+
+        #welcomeOverlay .btn-login {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 16px 35px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: var(--transition);
+            box-shadow: 0 10px 24px rgba(44, 90, 160, 0.25);
+        }
+
+        #welcomeOverlay .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 28px rgba(44, 90, 160, 0.32);
+        }
+
+        #welcomeOverlay .login-panel-trust {
+            margin-top: 26px;
+            font-size: 0.8rem;
+            color: var(--gray-color);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        #welcomeOverlay .login-panel-trust i {
+            color: var(--accent-color);
+        }
+
+        #welcomeOverlay .developer-signature {
+            text-align: center;
+        }
+
+        @media (max-width: 900px) {
+            #welcomeOverlay {
+                flex-direction: column;
+                overflow-y: auto;
+            }
+            #welcomeOverlay .login-hero {
+                flex: none;
+                min-height: 220px;
+                padding: 10px 0;
+            }
+            #welcomeOverlay .login-hero-content {
+                padding: 30px;
+                max-width: none;
+            }
+            #welcomeOverlay .login-hero-sub,
+            #welcomeOverlay .login-hero-stats {
+                display: none;
+            }
+            #welcomeOverlay .login-panel {
+                flex: none;
+                min-width: 0;
+                padding: 30px 24px 40px;
+            }
         }
 
         .welcome-card {
@@ -69,6 +328,7 @@
             box-shadow: 0 30px 60px rgba(0,0,0,0.3);
             animation: slideUp 0.8s ease;
             position: relative;
+            z-index: 1;
             overflow: hidden;
         }
 
@@ -95,7 +355,7 @@
         }
 
         .medical-symbol {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             width: 120px;
             height: 120px;
             border-radius: 60px 60px 60px 60px / 60px 60px 60px 60px;
@@ -184,7 +444,7 @@
         }
 
         .doctor-input-wrapper button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             color: white;
             border: none;
             border-radius: 50px;
@@ -238,6 +498,39 @@
             z-index: 1000;
         }
 
+        /* Visual "futurista" (opcional, ver Configurações > Aparência) - navy com
+           grade tecnica e brilho, no lugar do azul chapado acima. */
+        html.tema-futurista header {
+            background: linear-gradient(115deg, #0b1728 0%, #142743 50%, #0e2038 100%);
+            padding: 18px 0;
+            box-shadow: 0 1px 0 rgba(63, 230, 196, 0.25), 0 14px 32px -12px rgba(0, 0, 0, 0.45);
+            border-bottom: 1px solid rgba(63, 230, 196, 0.2);
+            overflow: hidden;
+            position: sticky;
+        }
+
+        html.tema-futurista header::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+            background-size: 28px 28px;
+            pointer-events: none;
+        }
+
+        html.tema-futurista header::after {
+            content: '';
+            position: absolute;
+            top: -60%;
+            right: 8%;
+            width: 260px;
+            height: 260px;
+            background: radial-gradient(circle, rgba(46, 214, 179, 0.25), transparent 70%);
+            pointer-events: none;
+        }
+
         .header-content {
             display: flex;
             justify-content: space-between;
@@ -250,13 +543,49 @@
             gap: 15px;
         }
 
-        .logo i {
+        .logo-icon-classico {
             font-size: 2.5rem;
+        }
+
+        .logo-badge {
+            display: none;
+            position: relative;
+            z-index: 1;
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 16px rgba(44, 90, 160, 0.3);
+        }
+
+        /* Visual "futurista": marca em selo com pulso animado (EKG) no lugar do
+           icone de estetoscopio simples. Ver Configurações > Aparência. */
+        html.tema-futurista .logo-icon-classico {
+            display: none;
+        }
+
+        html.tema-futurista .logo-badge {
+            display: flex;
+            animation: logoPulseRing 2.6s ease-in-out infinite;
+        }
+
+        @keyframes logoPulseRing {
+            0%, 100% { box-shadow: 0 6px 16px rgba(44, 90, 160, 0.3), 0 0 0 0 rgba(63, 230, 196, 0.45); }
+            50% { box-shadow: 0 6px 16px rgba(44, 90, 160, 0.3), 0 0 0 7px rgba(63, 230, 196, 0); }
         }
 
         .logo h1 {
             font-size: 1.8rem;
             font-weight: 600;
+        }
+
+        html.tema-futurista .logo h1 {
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 1.7rem;
+            letter-spacing: -0.01em;
         }
 
         .nav-links {
@@ -306,6 +635,45 @@
             gap: 10px;
         }
 
+        /* Visual "futurista": titulo serifado, icone em "chip" e sublinhado curto
+           com brilho no lugar da linha reta. Ver Configurações > Aparência. */
+        html.tema-futurista .page-title {
+            font-family: 'Fraunces', Georgia, serif;
+            font-weight: 600;
+            margin-bottom: 28px;
+            color: var(--dark-color);
+            border-bottom: none;
+            padding-bottom: 18px;
+            gap: 14px;
+            position: relative;
+        }
+
+        html.tema-futurista .page-title::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 68px;
+            height: 3px;
+            border-radius: 2px;
+            background: linear-gradient(90deg, var(--accent-color), var(--secondary-color));
+            box-shadow: 0 0 12px rgba(26, 188, 156, 0.55);
+        }
+
+        html.tema-futurista .page-title i {
+            width: 42px;
+            height: 42px;
+            min-width: 42px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 11px;
+            background: linear-gradient(135deg, rgba(44, 90, 160, 0.1), rgba(26, 188, 156, 0.14));
+            border: 1px solid rgba(26, 188, 156, 0.35);
+            color: var(--primary-color);
+            font-size: 1.15rem !important;
+        }
+
         /* Cards */
         .card {
             background-color: white;
@@ -318,6 +686,39 @@
 
         .card:hover {
             box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+        }
+
+        /* Visual "futurista": borda com gradiente sutil + sombra colorida (brilho)
+           em vez da sombra cinza padrao. Ver Configurações > Aparência. */
+        html.tema-futurista .card {
+            border-radius: 14px;
+            border: 1px solid rgba(44, 90, 160, 0.09);
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 14px 30px -12px rgba(44, 90, 160, 0.16);
+            position: relative;
+        }
+
+        html.tema-futurista .card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(44, 90, 160, 0.3), rgba(26, 188, 156, 0.3));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0.55;
+            pointer-events: none;
+            transition: var(--transition);
+        }
+
+        html.tema-futurista .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 22px 42px -14px rgba(44, 90, 160, 0.26);
+        }
+
+        html.tema-futurista .card:hover::before {
+            opacity: 1;
         }
 
         .card-header {
@@ -646,7 +1047,7 @@
         }
 
         .consultation-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             color: white;
             padding: 30px;
             border-radius: var(--border-radius);
@@ -857,7 +1258,7 @@
         .diagnosis-confidence-badge {
             display: inline-block;
             padding: 8px 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             color: white;
             border-radius: 30px;
             font-size: 1rem;
@@ -1156,29 +1557,13 @@
         }
 
         .welcome-message {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             color: white;
             padding: 40px;
             border-radius: var(--border-radius);
             margin-bottom: 30px;
             position: relative;
             overflow: hidden;
-        }
-
-        .welcome-message h2 {
-            font-size: 2.2rem;
-            margin-bottom: 15px;
-            font-weight: 600;
-            position: relative;
-            z-index: 2;
-        }
-
-        .welcome-message p {
-            font-size: 1.3rem;
-            opacity: 0.95;
-            position: relative;
-            z-index: 2;
-            font-weight: 500;
         }
 
         .welcome-message::before {
@@ -1202,6 +1587,56 @@
             background: rgba(255,255,255,0.08);
             border-radius: 50%;
         }
+
+        /* Visual "futurista": mesmo tratamento navy+grade+brilho do cabeçalho.
+           Ver Configurações > Aparência. */
+        html.tema-futurista .welcome-message {
+            background: linear-gradient(115deg, #0b1728 0%, #142743 50%, #0e2038 100%);
+            box-shadow: 0 1px 0 rgba(63, 230, 196, 0.2), 0 14px 32px -12px rgba(0, 0, 0, 0.35);
+        }
+
+        html.tema-futurista .welcome-message::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+            background-size: 28px 28px;
+            pointer-events: none;
+        }
+
+        html.tema-futurista .welcome-message::after {
+            content: '';
+            position: absolute;
+            top: -60%;
+            right: 6%;
+            width: 260px;
+            height: 260px;
+            background: radial-gradient(circle, rgba(46, 214, 179, 0.22), transparent 70%);
+            pointer-events: none;
+        }
+
+        .welcome-message h2 {
+            font-size: 2.2rem;
+            margin-bottom: 15px;
+            font-weight: 600;
+            position: relative;
+            z-index: 2;
+        }
+
+        html.tema-futurista .welcome-message h2 {
+            font-family: 'Fraunces', Georgia, serif;
+        }
+
+        .welcome-message p {
+            font-size: 1.3rem;
+            opacity: 0.95;
+            position: relative;
+            z-index: 2;
+            font-weight: 500;
+        }
+
 
         .filter-group {
             display: flex;
@@ -1251,7 +1686,7 @@
         }
 
         .patient-profile-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             color: white;
             padding: 40px;
             border-radius: var(--border-radius);
@@ -1285,7 +1720,7 @@
 
         .patient-avatar-large i {
             font-size: 60px;
-            color: #667eea;
+            color: var(--primary-color);
         }
 
         .patient-badge {
@@ -1351,7 +1786,7 @@
         .stat-icon-modern {
             width: 60px;
             height: 60px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             border-radius: 15px;
             display: flex;
             align-items: center;
@@ -1383,7 +1818,7 @@
             top: 0;
             bottom: 0;
             width: 2px;
-            background: linear-gradient(to bottom, #667eea, #764ba2);
+            background: linear-gradient(to bottom, var(--primary-color), var(--secondary-color));
         }
 
         .timeline-item-modern {
@@ -1401,7 +1836,7 @@
             height: 16px;
             border-radius: 50%;
             background: white;
-            border: 3px solid #667eea;
+            border: 3px solid var(--primary-color);
         }
 
         .info-grid-modern {
@@ -1415,7 +1850,7 @@
             padding: 20px;
             background: #f8f9fa;
             border-radius: var(--border-radius);
-            border-left: 4px solid #667eea;
+            border-left: 4px solid var(--primary-color);
         }
 
         .loading-spinner {
@@ -2127,48 +2562,124 @@
 </head>
 <body>
     <!-- WELCOME OVERLAY - TELA DE LOGIN -->
-    <div id="welcomeOverlay" class="welcome-overlay">
-        <div class="welcome-card">
-            <div class="medical-symbol">
-                <i class="fas fa-stethoscope"></i>
-            </div>
-            <div class="search-symbol">
-                <i class="fas fa-search"></i>
-                <i class="fas fa-plus"></i>
-                <i class="fas fa-user-md"></i>
-            </div>
-            <h1>Centro de Diagnóstico Médico</h1>
-            <p>Sistema Inteligente com IA em Tempo Real</p>
-            
-            <div class="doctor-input-group">
-                <!-- CAMPO USUÁRIO -->
-                <div class="doctor-input-wrapper">
-                    <i class="fas fa-user"></i>
-                    <input type="text" id="loginUsuario" placeholder="Digite seu usuário" autocomplete="off">
-                </div>
-                
-                <!-- CAMPO SENHA -->
-                <div class="doctor-input-wrapper">
-                    <i class="fas fa-lock"></i>
-                    <input type="password" id="loginSenha" placeholder="Digite sua senha">
-                </div>
-                
-                <!-- BOTÃO DE LOGIN -->
-                <button id="loginBtn" class="btn-login" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 50px; padding: 15px 35px; font-size: 1.1rem; font-weight: 600; cursor: pointer; width: 100%; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 10px;">
-                    <i class="fas fa-sign-in-alt"></i> Entrar no Sistema
-                </button>
-                
-                <!-- MENSAGEM DE ERRO -->
-                <div id="login-error-message" style="display: none;">
-                    <i class="fas fa-exclamation-circle"></i> Usuário ou senha incorretos
-                </div>
-            </div>
-            
-            <div class="developer-signature">
-                <i class="fas fa-code"></i> Desenvolvido por <strong>Dr. Diêgo Ferreira</strong>
-            </div>
-        </div>
-    </div>
+    <div id="welcomeOverlay" class="welcome-overlay"></div>
+
+    <!-- Duas telas de login (clássica e futurista) - a escolhida (ver
+         Configurações > Aparência, chave localStorage 'med_tema_visual')
+         é injetada em #welcomeOverlay ANTES do resto da página rodar,
+         pra quando configurarEventListeners() ligar os botões/campos
+         (loginUsuario, loginSenha, loginBtn etc.) eles já existirem no
+         DOM - só um dos dois templates fica ativo por vez, nunca os dois
+         juntos (evitaria id duplicado). -->
+    <script>
+    (function () {
+        var TEMPLATE_CLASSICO =
+            '<div class="welcome-card">' +
+                '<div class="medical-symbol"><i class="fas fa-stethoscope"></i></div>' +
+                '<div class="search-symbol">' +
+                    '<i class="fas fa-search"></i><i class="fas fa-plus"></i><i class="fas fa-user-md"></i>' +
+                '</div>' +
+                '<h1>Centro de Diagnóstico Médico</h1>' +
+                '<p>Sistema Inteligente com IA em Tempo Real</p>' +
+                '<div class="doctor-input-group">' +
+                    '<div class="doctor-input-wrapper">' +
+                        '<i class="fas fa-user"></i>' +
+                        '<input type="text" id="loginUsuario" placeholder="Digite seu usuário" autocomplete="off">' +
+                    '</div>' +
+                    '<div class="doctor-input-wrapper">' +
+                        '<i class="fas fa-lock"></i>' +
+                        '<input type="password" id="loginSenha" placeholder="Digite sua senha">' +
+                    '</div>' +
+                    '<button id="loginBtn" class="btn-login" style="background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); color: white; border: none; border-radius: 50px; padding: 15px 35px; font-size: 1.1rem; font-weight: 600; cursor: pointer; width: 100%; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 10px;">' +
+                        '<i class="fas fa-sign-in-alt"></i> Entrar no Sistema' +
+                    '</button>' +
+                    '<div id="login-error-message" style="display: none;">' +
+                        '<i class="fas fa-exclamation-circle"></i> Usuário ou senha incorretos' +
+                    '</div>' +
+                '</div>' +
+                '<div class="developer-signature">' +
+                    '<i class="fas fa-code"></i> Desenvolvido por <strong>Dr. Diêgo Ferreira</strong>' +
+                '</div>' +
+            '</div>';
+
+        var TEMPLATE_FUTURISTA =
+            '<div class="login-hero">' +
+                '<canvas id="dna-bg-canvas" aria-hidden="true"></canvas>' +
+                '<div class="login-hero-content">' +
+                    '<div class="login-hero-badge">' +
+                        '<svg viewBox="0 0 48 48" width="26" height="26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+                            '<path d="M3 24H11L15 11L22 37L27 17L31 24H41" stroke="#3ee6c4" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+                            '<circle cx="41" cy="24" r="3.1" fill="#3ee6c4"/>' +
+                        '</svg>' +
+                    '</div>' +
+                    '<h1 class="login-hero-title">Centro de<br>Diagnóstico Médico</h1>' +
+                    '<p class="login-hero-sub">Inteligência artificial, precisão clínica e agilidade em cada decisão — tudo em um único sistema.</p>' +
+                    '<div class="login-hero-stats">' +
+                        '<div><strong>IA</strong><span>Tempo real</span></div>' +
+                        '<div><strong>256-bit</strong><span>Dados protegidos</span></div>' +
+                        '<div><strong>24/7</strong><span>Disponibilidade</span></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="login-panel">' +
+                '<div class="login-panel-inner">' +
+                    '<div class="login-panel-icon"><i class="fas fa-user-md"></i></div>' +
+                    '<h2>Acesso ao sistema</h2>' +
+                    '<p class="login-panel-lead">Entre com suas credenciais para continuar</p>' +
+                    '<div class="doctor-input-group">' +
+                        '<div class="doctor-input-wrapper">' +
+                            '<i class="fas fa-user"></i>' +
+                            '<input type="text" id="loginUsuario" placeholder="Digite seu usuário" autocomplete="off">' +
+                        '</div>' +
+                        '<div class="doctor-input-wrapper">' +
+                            '<i class="fas fa-lock"></i>' +
+                            '<input type="password" id="loginSenha" placeholder="Digite sua senha">' +
+                        '</div>' +
+                        '<button id="loginBtn" class="btn-login">' +
+                            '<i class="fas fa-sign-in-alt"></i> Entrar no Sistema' +
+                        '</button>' +
+                        '<div id="login-error-message" style="display: none;">' +
+                            '<i class="fas fa-exclamation-circle"></i> Usuário ou senha incorretos' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="login-panel-trust"><i class="fas fa-shield-alt"></i> Conexão segura e criptografada</div>' +
+                    '<div class="developer-signature">' +
+                        '<i class="fas fa-code"></i> Desenvolvido por <strong>Dr. Diêgo Ferreira</strong>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        window.TEMA_VISUAL_TEMPLATES = { classico: TEMPLATE_CLASSICO, futurista: TEMPLATE_FUTURISTA };
+
+        var tema = 'classico';
+        try {
+            tema = localStorage.getItem('med_tema_visual') === 'futurista' ? 'futurista' : 'classico';
+        } catch (e) {}
+
+        document.documentElement.classList.toggle('tema-futurista', tema === 'futurista');
+        document.getElementById('welcomeOverlay').innerHTML = tema === 'futurista' ? TEMPLATE_FUTURISTA : TEMPLATE_CLASSICO;
+
+        /**
+         * Troca o visual (chamado pelo select em Configurações > Aparência).
+         * Também reescreve a tela de login (só tem efeito visível depois de sair
+         * e entrar de novo, mas já fica salvo pra próxima vez).
+         */
+        window.aplicarTemaVisual = function (novoTema) {
+            novoTema = novoTema === 'futurista' ? 'futurista' : 'classico';
+            try { localStorage.setItem('med_tema_visual', novoTema); } catch (e) {}
+            document.documentElement.classList.toggle('tema-futurista', novoTema === 'futurista');
+            // Reescreve o HTML do login já (mesmo se ele estiver escondido agora,
+            // por trás do sistema logado) - assim, quando o usuário sair, a tela
+            // de login já aparece com o visual novo, sem precisar recarregar a
+            // página. Sem isso, trocar o tema enquanto logado só valeria a
+            // partir do próximo carregamento da página.
+            document.getElementById('welcomeOverlay').innerHTML = window.TEMA_VISUAL_TEMPLATES[novoTema];
+            if (novoTema === 'futurista' && window.__reiniciarFundoDNA) {
+                window.__reiniciarFundoDNA();
+            }
+        };
+    })();
+    </script>
 
     <!-- MODAL: TROCAR SENHA -->
     <div id="trocarSenhaOverlay" class="welcome-overlay" style="display: none;">
@@ -2212,7 +2723,13 @@
         <div class="container header-content">
             <div style="display: flex; align-items: center; gap: 40px; flex-wrap: wrap;">
                 <div class="logo">
-                    <i class="fas fa-stethoscope"></i>
+                    <i class="fas fa-stethoscope logo-icon-classico"></i>
+                    <div class="logo-badge">
+                        <svg viewBox="0 0 48 48" width="24" height="24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M3 24H11L15 11L22 37L27 17L31 24H41" stroke="white" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="41" cy="24" r="3.2" fill="white"/>
+                        </svg>
+                    </div>
                     <h1>Centro de Diagnóstico Médico</h1>
                 </div>
                 <nav>
@@ -2997,6 +3514,24 @@
                     </select>
                     <p style="color: var(--gray-color); margin-top: 8px; font-size: 0.9rem;">
                         Recomendado em computadores compartilhados: 15 minutos ou 1 hora.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Aparência -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="fas fa-palette"></i> Aparência</h3>
+                </div>
+                <div class="form-group">
+                    <label for="config-tema-select">Estilo visual do sistema</label>
+                    <select id="config-tema-select" onchange="aplicarTemaVisual(this.value)" style="max-width: 300px; margin-top: 5px;">
+                        <option value="classico">Clássico</option>
+                        <option value="futurista">Futurista (novo)</option>
+                    </select>
+                    <p style="color: var(--gray-color); margin-top: 8px; font-size: 0.9rem;">
+                        "Futurista" muda as cores, o cabeçalho e a tela de login pra um visual mais moderno.
+                        A troca aparece na tela de login a partir da próxima vez que você sair do sistema.
                     </p>
                 </div>
             </div>
@@ -7061,6 +7596,9 @@ Justificativa: [texto com evidências integrando clínica e imagem]
             if (pageId === 'configuracoes') {
                 document.getElementById('config-doctor-name').value = currentDoctorName || '';
                 document.getElementById('config-inatividade-select').value = String(obterInatividadeMaxMs());
+                var temaSalvo = 'classico';
+                try { temaSalvo = localStorage.getItem('med_tema_visual') === 'futurista' ? 'futurista' : 'classico'; } catch (e) {}
+                document.getElementById('config-tema-select').value = temaSalvo;
             }
         }
 
@@ -7776,6 +8314,178 @@ Justificativa: [texto com evidências integrando clínica e imagem]
         window.excluirConsulta = excluirConsulta;
 
         // Inicialização feita em window.onload (evita dupla inicialização)
+    </script>
+
+    <!-- ============================================================
+         FUNDO 3D DA TELA DE LOGIN (hélice de DNA, Three.js)
+         Bloco isolado de propósito (não usa nem é usado por nenhuma
+         variável do script principal) - se o Three.js não carregar
+         (offline, CDN bloqueado, navegador muito antigo sem WebGL),
+         a checagem "typeof THREE" abaixo faz esse bloco todo virar
+         um no-op silencioso: a tela de login continua exatamente como
+         era antes, com o gradiente CSS normal, sem erro nenhum.
+         ============================================================ -->
+    <script>
+    (function () {
+        "use strict";
+        // Incrementada a cada iniciarFundoDNA() que realmente roda - o loop de
+        // animação de uma chamada antiga se desliga sozinho quando não é mais
+        // o mais recente (ver "minhaVez" dentro de animar()). Necessário porque
+        // trocar de tema em Configurações > Aparência reinjeta um canvas NOVO
+        // e chama isto de novo (ver window.__reiniciarFundoDNA), e sem isso o
+        // loop antigo (com o canvas antigo, já fora do DOM) ficaria rodando
+        // pra sempre em segundo plano.
+        var geracaoAtual = 0;
+
+        function iniciarFundoDNA() {
+            if (typeof THREE === "undefined") return; // CDN não carregou - sem 3D, sem erro
+            var canvas = document.getElementById("dna-bg-canvas");
+            var overlay = document.getElementById("welcomeOverlay");
+            var hero = document.querySelector("#welcomeOverlay .login-hero");
+            if (!canvas || !overlay || !hero) return;
+            // Este canvas especifico ja tem um renderer rodando (evita inicializar
+            // 2x quando os varios eventos de carregamento disparam esta funcao
+            // pra o MESMO canvas do carregamento inicial da pagina).
+            if (canvas.dataset.dnaIniciado) return;
+            canvas.dataset.dnaIniciado = "1";
+            var minhaVez = ++geracaoAtual;
+
+            var COR_FUNDO = 0x0e1b2f; // igual ao tom do gradiente CSS do painel escuro
+
+            var renderer;
+            try {
+                renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+            } catch (e) {
+                return; // WebGL indisponível nesse navegador/dispositivo - segue sem o fundo 3D
+            }
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            renderer.setClearColor(0x000000, 0); // transparente - deixa o gradiente CSS por baixo
+
+            var scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(COR_FUNDO, 9, 21); // esmaece as partes mais distantes no tom do painel
+            var camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+            camera.position.set(0, 0, 13);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            var luzPrincipal = new THREE.DirectionalLight(0xdfefff, 0.7);
+            luzPrincipal.position.set(4, 6, 8);
+            scene.add(luzPrincipal);
+            var luzRealce = new THREE.PointLight(0x2ee6c4, 1.1, 26); // realce na cor de marca (teal)
+            luzRealce.position.set(3, -2, 7);
+            scene.add(luzRealce);
+
+            var grupoHelice = new THREE.Group();
+            // Deslocada pra direita do painel escuro (perto da divisória com o
+            // formulário), deixando o texto (fora do canvas, em HTML/CSS) livre
+            // do lado esquerdo, sem disputar espaço visual com a arte.
+            grupoHelice.position.x = 2.4;
+            grupoHelice.rotation.z = Math.PI / 10;
+            scene.add(grupoHelice);
+
+            // Duas fitas em espiral, unidas por hastes finas - a dupla-hélice de
+            // DNA, mas desenhada como linha/tubo fino monocromático (tom único da
+            // marca, ver COR_FITA) em vez de esferas coloridas tipo "bolinha de
+            // modelo de química" - leitura mais discreta e sofisticada.
+            var PASSOS = 90, RAIO = 1.55, ALTURA_TOTAL = 15, VOLTAS = 2.8;
+            var COR_FITA = 0x2fd9c4;
+            var matFita = new THREE.MeshStandardMaterial({
+                color: COR_FITA, emissive: 0x0d5c52, emissiveIntensity: 0.6,
+                roughness: 0.3, metalness: 0.4, transparent: true, opacity: 0.85
+            });
+            var matHaste = new THREE.MeshStandardMaterial({
+                color: 0x9fd8ea, transparent: true, opacity: 0.22, roughness: 0.6
+            });
+            var matNo = new THREE.MeshStandardMaterial({
+                color: 0xbdf2e6, emissive: 0x2fd9c4, emissiveIntensity: 0.5, roughness: 0.25
+            });
+
+            var pontosA = [], pontosB = [];
+            for (var i = 0; i < PASSOS; i++) {
+                var t = i / (PASSOS - 1);
+                var angulo = t * Math.PI * 2 * VOLTAS;
+                var y = (t - 0.5) * ALTURA_TOTAL;
+                pontosA.push(new THREE.Vector3(Math.cos(angulo) * RAIO, y, Math.sin(angulo) * RAIO));
+                pontosB.push(new THREE.Vector3(Math.cos(angulo + Math.PI) * RAIO, y, Math.sin(angulo + Math.PI) * RAIO));
+            }
+
+            // Tubos finos seguindo as duas curvas (bem mais elegante que "contas"
+            // separadas) + pequenos nós discretos a cada poucos passos.
+            [pontosA, pontosB].forEach(function (pontos) {
+                var curva = new THREE.CatmullRomCurve3(pontos);
+                var tubo = new THREE.Mesh(new THREE.TubeGeometry(curva, 220, 0.028, 6, false), matFita);
+                grupoHelice.add(tubo);
+                for (var i = 0; i < pontos.length; i += 6) {
+                    var no = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), matNo);
+                    no.position.copy(pontos[i]);
+                    grupoHelice.add(no);
+                }
+            });
+
+            // Hastes finas ligando as duas fitas, espaçadas (senão fica poluído).
+            var geoHaste = new THREE.CylinderGeometry(0.016, 0.016, RAIO * 2, 5);
+            for (var j = 0; j < PASSOS; j += 5) {
+                var haste = new THREE.Mesh(geoHaste, matHaste);
+                haste.position.copy(pontosA[j]).lerp(pontosB[j], 0.5);
+                haste.lookAt(pontosB[j]);
+                haste.rotateX(Math.PI / 2);
+                grupoHelice.add(haste);
+            }
+
+            function ajustarTamanho() {
+                var w = hero.clientWidth || overlay.clientWidth || window.innerWidth;
+                var h = hero.clientHeight || overlay.clientHeight || window.innerHeight;
+                renderer.setSize(w, h, false);
+                camera.aspect = w / Math.max(h, 1);
+                camera.updateProjectionMatrix();
+            }
+            ajustarTamanho();
+            window.addEventListener("resize", ajustarTamanho);
+
+            // Resposta suave ao mouse (posição relativa DENTRO do painel escuro) -
+            // interpolado, nunca "salta" pra posição nova de uma vez.
+            var mouseX = 0, mouseY = 0, inclinacaoX = 0, inclinacaoY = 0;
+            window.addEventListener("mousemove", function (e) {
+                var r = hero.getBoundingClientRect();
+                mouseX = ((e.clientX - r.left) / Math.max(r.width, 1)) * 2 - 1;
+                mouseY = ((e.clientY - r.top) / Math.max(r.height, 1)) * 2 - 1;
+            });
+
+            var relogio = new THREE.Clock();
+            function animar() {
+                // Uma chamada mais nova de iniciarFundoDNA() assumiu (troca de
+                // tema reinjetou o canvas) - esta instancia antiga se desliga
+                // de vez, sem se re-agendar (o canvas dela nem existe mais).
+                if (minhaVez !== geracaoAtual) return;
+                requestAnimationFrame(animar);
+                // Só desenha enquanto a tela de login estiver visível - depois do
+                // login este bloco fica ocioso (custo ~zero) em vez de gastar
+                // bateria/CPU renderizando um fundo que não aparece mais.
+                if (getComputedStyle(overlay).display === "none") return;
+
+                var dt = Math.min(relogio.getDelta(), 0.1);
+                grupoHelice.rotation.y += dt * 0.18; // rotação lenta e ambiente
+                inclinacaoX += (mouseY * 0.25 - inclinacaoX) * 0.04;
+                inclinacaoY += (mouseX * 0.3 - inclinacaoY) * 0.04;
+                grupoHelice.rotation.x = inclinacaoX;
+                camera.position.x = mouseX * 0.6;
+                camera.position.y = -mouseY * 0.6;
+                camera.lookAt(grupoHelice.position.x * 0.3, 0, 0);
+
+                renderer.render(scene, camera);
+            }
+            animar();
+        }
+
+        if (document.readyState === "complete" || document.readyState === "interactive") {
+            // "defer" no script do Three.js já garante ordem, mas o document
+            // pode terminar de carregar antes ou depois - cobre os dois casos.
+            setTimeout(iniciarFundoDNA, 0);
+        } else {
+            document.addEventListener("DOMContentLoaded", iniciarFundoDNA);
+        }
+        window.addEventListener("load", iniciarFundoDNA);
+        window.__reiniciarFundoDNA = iniciarFundoDNA;
+    })();
     </script>
 </body>
 </html>
